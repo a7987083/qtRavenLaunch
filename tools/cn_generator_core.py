@@ -105,7 +105,10 @@ def _cn_patch_widget(cls, draw_method, translations, reader_name="text"):
     def _cn_text(self):
         value = text(self)
         if getattr(self, "_raven_cn_paint_depth", 0):
-            return translations.get(value, value)
+            translated = translations.get(value, value)
+            if translated != value:
+                _cn_log("paint-applied", cls.__name__, value)
+            return translated
         return value
 
     def _cn_draw(self, *args, **kwargs):
