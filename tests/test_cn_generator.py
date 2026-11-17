@@ -524,6 +524,75 @@ class GeneratorTests(unittest.TestCase):
             sys.meta_path[:] = [x for x in sys.meta_path
                                 if not isinstance(x, ns.get("_CnFinder", type(None)))]
 
+    def test_settings_module_global_discord_labels_and_field_refresh(self):
+        """Original UI captions are module globals, not init string literals."""
+        class QWidget:
+            def __init__(self, value=""):
+                self.value = value
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+            def objectName(self):
+                return ""
+            def toolTip(self):
+                return ""
+            def setToolTip(self, value):
+                pass
+        class QLabel(QWidget):
+            pass
+        class QAbstractButton(QWidget):
+            pass
+        class SettingsPage:
+            def __init__(self):
+                self.parent = QAbstractButton(parent_caption)
+                self.child = QAbstractButton(child_caption)
+                self.name = QAbstractButton(field_names["name"])
+                self.status = QLabel("UPDATE")
+                self.controls = [self.parent, self.child, self.name, self.status]
+            def findChildren(self, kind):
+                return [item for item in self.controls if isinstance(item, kind)]
+            def _sync_discord_character_row(self):
+                self.child.setText(child_caption)
+            def showEvent(self, event):
+                self.parent.setText(parent_caption)
+
+        parent_caption = "Show status on Discord"
+        child_caption = "Show character details (name, race, class, guild, zone, level)"
+        field_names = {"name": "Name"}
+        fakeqt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget, widgets.QLabel, widgets.QAbstractButton = QWidget, QLabel, QAbstractButton
+        fakeqt.QtWidgets = widgets
+        ns = {}
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64,
+            {parent_caption: "在 Discord 上显示活动状态",
+             child_caption: "显示角色详情", "Name": "名称", "UPDATE": "更新"}))
+        with patch.dict(sys.modules, {"PySide6": fakeqt,
+                                      "PySide6.QtWidgets": widgets}):
+            try:
+                exec(bootstrap, ns)
+                module = types.SimpleNamespace(
+                    SettingsPage=SettingsPage,
+                    _DISCORD_PARENT_LABEL=parent_caption,
+                    _DISCORD_CHILD_LABEL=child_caption,
+                    BROADCAST_FIELD_LABELS=field_names)
+                ns["_cn_patch_loaded"]("ichalaunch.ui.pages.settings", module)
+                page = SettingsPage()
+                self.assertEqual(page.parent.text(), "在 Discord 上显示活动状态")
+                self.assertEqual(page.child.text(), "显示角色详情")
+                self.assertEqual(page.name.text(), "名称")
+                self.assertEqual(page.status.text(), "UPDATE")
+                page._sync_discord_character_row()
+                self.assertEqual(page.child.text(), "显示角色详情")
+                page.showEvent(None)
+                self.assertEqual(page.parent.text(), "在 Discord 上显示活动状态")
+            finally:
+                sys.meta_path[:] = [
+                    finder for finder in sys.meta_path
+                    if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
