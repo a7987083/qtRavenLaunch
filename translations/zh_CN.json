@@ -5,5 +5,19 @@
   "SETTINGS": "设置",
   "PLAY": "开始游戏",
   "INSTALL": "安装",
-  "UPDATE": "更新"
+  "UPDATE": "更新",
+  "GAME CLIENT": "游戏客户端",
+  "GAME LOCATION": "游戏目录",
+  "ADDONS FOLDER": "插件目录",
+  "EXISTING INSTALL": "已有安装",
+  "INSTALL...": "安装...",
+  "BROWSE...": "浏览...",
+  "VERIFY": "验证",
+  "RESET CLIENT LINK": "重置客户端关联",
+  "1.12 Vanilla - the original 2006 visual experience": "1.12 原版客户端 - 2006 年的经典画面",
+  "1.14 Classic - classic gameplay with today's graphics": "1.14 经典客户端 - 经典玩法与现代画面",
+  "HD textures for the 1.14 client - sharper art, a large extra download.": "为 1.14 客户端安装高清材质（需要额外下载大量文件）",
+  "PLAY starts the selected client.": "点击「开始游戏」启动当前选定的客户端。",
+  "Avoid Program Files / Desktop / Downloads / Documents.": "请避免选择 Program Files、桌面、下载或文档目录。",
+  "Used to reinstall the client. Clears the saved WoW folder so PLAY becomes INSTALL and you can choose a new location. Does not delete files on disk.": "用于重新安装客户端。清除已保存的 WoW 路径，以便重新选择安装位置；不会删除磁盘文件。"
 }
