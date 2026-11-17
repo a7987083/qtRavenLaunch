@@ -359,6 +359,24 @@ _CN_CLIENT_DETAIL_KEYS = frozenset((
     "Enables Nampower's login Encrypt toggle via Windows DPAPI. Changing or clearing the key makes previously encrypted passwords unreadable.",
 ))
 
+# These are catalog identifiers, not UI vocabulary. Even if a user places
+# them in a flat translation JSON, preserve their exact source strings.
+_CN_CLIENT_CATALOG_IDENTIFIERS = frozenset((
+    "Vanilla Tweaks V2",
+    "Vanilla Tweaks (Old)",
+    "VanillaFixes",
+    "VanillaFixes + DXVK (Vulkan)",
+    "DXVK 2.7.1",
+    "Auction Query Throttle",
+    "PerfBoost",
+    "SuperWoW",
+    "Nampower",
+    "ClassicAPI",
+    "UnitXP Service Pack 3",
+    "Cinder Bug Report",
+    "Cinder Map Notes",
+))
+
 
 def _cn_static_literals(code):
     """Collect static strings, including nested UI construction closures.
@@ -459,7 +477,9 @@ def _cn_patch_page(module_name, module):
                             and original in _CN_CLIENT_DETAIL_KEYS
                         ))
                     )
-                    if display_source and original not in _CN_NEVER_REPLACE:
+                    if (display_source and original not in _CN_NEVER_REPLACE
+                            and (module_name != "ichalaunch.ui.pages.client"
+                                 or original not in _CN_CLIENT_CATALOG_IDENTIFIERS)):
                         translated = _CN_TRANSLATIONS.get(original)
                         if translated and translated != original:
                             set_text(translated)
