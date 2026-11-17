@@ -181,10 +181,18 @@ def _cn_dialog_display_text(source, kind):
             template = _CN_TRANSLATIONS.get(
                 "Folder is {folder} but the .toc is {toc}. WoW requires the folder name "
                 "to match the .toc. Rename folder to {target}?")
-            if template:
-                return (template.replace("{folder}", match.group(1))
-                        .replace("{toc}", match.group(2))
-                        .replace("{target}", match.group(3)))
+            if template and all(template.count(token) == 1 for token in
+                                ("{folder}", "{toc}", "{target}")):
+                values = {
+                    "{folder}": match.group(1),
+                    "{toc}": match.group(2),
+                    "{target}": match.group(3),
+                }
+                # Single-pass substitution: folder names containing e.g.
+                # "{toc}" must never be interpreted as another placeholder.
+                return _cn_re.sub(
+                    r"\{(?:folder|toc|target)\}",
+                    lambda m: values[m.group(0)], template)
 
     if kind == "game-update":
         count_prefix = _cn_re.compile(
@@ -196,7 +204,7 @@ def _cn_dialog_display_text(source, kind):
             if match:
                 template = _CN_TRANSLATIONS.get(
                     "{count} published game file(s) do not match this install.")
-                if template:
+                if template and template.count("{count}") == 1:
                     paragraphs[i] = template.replace("{count}", match.group(1))
                     modified = True
             elif part in _CN_PROMPT_STATIC["game-update"] and _CN_TRANSLATIONS.get(part):
