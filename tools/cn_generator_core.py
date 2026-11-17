@@ -21,7 +21,7 @@ COOKIE = struct.Struct("!8sIIII64s")
 ENTRY = struct.Struct("!IIIIBc")
 MAX_SIZE = 512 * 1024 * 1024
 MAX_SCRIPT = 8 * 1024 * 1024
-MAX_DICTIONARY_BYTES = 256 * 1024
+MAX_DICTIONARY_BYTES = 2 * 1024 * 1024
 
 # Patch only the display value inside Python custom paint routines; the
 # underlying QWidget.text() remains English for game state and routing.
