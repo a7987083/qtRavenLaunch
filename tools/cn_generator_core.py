@@ -881,12 +881,56 @@ def _cn_patch_realmlist_runtime(module):
     _cn_log("login-adapter-ready", "realmlist-runtime", "realm-only")
 
 
+def _cn_patch_game_launch(module):
+    """Pre-launch safeguard for 1.12 game launch.
+
+    The official main-window realmlist confirmation can be skipped by user
+    settings or UI flow. Make the selected game's login config correct at
+    the last original launch_game() boundary, without changing patchList.
+    """
+    if not _CN_CUSTOM_LOGIN_HOST or getattr(module, "_raven_cn_launch_host_patched", False):
+        return
+    original = getattr(module, "launch_game", None)
+    detector = getattr(module, "detect_game", None)
+    if not callable(original) or not callable(detector):
+        _cn_log("adapter-missing", "login-prelaunch", "launch-game")
+        return
+
+    def launch_with_realm_precheck(*args, **kwargs):
+        game = detector()
+        if game is not None:
+            from ichalaunch.game import realmlist_wtf as realm
+            # Some launch paths import realmlist_wtf before our hook is
+            # attached. Require the patch and fail closed when unavailable.
+            if not getattr(realm, "_raven_cn_realm_patched", False):
+                _cn_patch_realmlist_runtime(realm)
+            if not getattr(realm, "_raven_cn_realm_patched", False):
+                _cn_log("login-prelaunch-failed", "realmlist", "adapter-missing")
+                raise RuntimeError("Cannot verify custom login server adapter")
+            try:
+                realm.apply_ravencraft_realm_endpoints(game)
+                rows = realm.inspect_realm_endpoints(game)
+                if any(row.needs_update for row in rows):
+                    raise RuntimeError("Game realmList remains at the wrong login host")
+            except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+                _cn_log("login-prelaunch-failed", "realmlist", type(exc).__name__)
+                raise RuntimeError("Cannot safely apply custom game login address") from exc
+            _cn_log("login-prelaunch-ok", "realmlist", "checked")
+        return original(*args, **kwargs)
+
+    module.launch_game = launch_with_realm_precheck
+    module._raven_cn_launch_host_patched = True
+    _cn_log("login-adapter-ready", "game-launch", "prelaunch")
+
+
 def _cn_patch_loaded(name, module):
     try:
         if name == "ichalaunch.game.realm_status":
             _cn_patch_realm_status(module)
         elif name == "ichalaunch.game.realmlist_wtf":
             _cn_patch_realmlist_runtime(module)
+        elif name == "ichalaunch.game.launcher":
+            _cn_patch_game_launch(module)
         elif name == "ichalaunch.ui.main_window":
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
@@ -960,7 +1004,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.game.realm_status", "ichalaunch.game.realmlist_wtf", "ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", "ichalaunch.ui.widgets.metal_framed_dialog", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.game.realm_status", "ichalaunch.game.realmlist_wtf", "ichalaunch.game.launcher", "ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", "ichalaunch.ui.widgets.metal_framed_dialog", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
