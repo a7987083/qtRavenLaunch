@@ -329,6 +329,78 @@ class GeneratorTests(unittest.TestCase):
                         if not isinstance(finder, ns.get("_CnFinder", type(None)))
                     ]
 
+    def test_glue_combo_paint_translation_preserves_filter_semantics(self):
+        """Painting changes Chinese text, business currentText/model stay English."""
+        class QStyledItemDelegate:
+            def __init__(self, parent=None):
+                self.parent = parent
+            def initStyleOption(self, option, index):
+                option.text = index.data()
+
+        class FakeView:
+            def __init__(self):
+                self.delegate = QStyledItemDelegate()
+            def itemDelegate(self):
+                return self.delegate
+            def setItemDelegate(self, delegate):
+                self.delegate = delegate
+
+        class GlueComboBox:
+            def __init__(self):
+                self.labels = ["Installed", "Available", "All"]
+                self.selected = 0
+                self._view = FakeView()
+            def currentText(self):
+                return self.labels[self.selected]
+            def itemText(self, index):
+                return self.labels[index]
+            def view(self):
+                return self._view
+            def paintEvent(self, event):
+                return self.currentText()
+
+        class Option:
+            text = ""
+
+        class Index:
+            def __init__(self, text):
+                self.raw = text
+            def data(self):
+                return self.raw
+
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64,
+            {"Installed": "已安装", "Available": "可用", "All": "全部"}))
+        qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QStyledItemDelegate = QStyledItemDelegate
+        qt.QtWidgets = widgets
+        ns = {}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict(sys.modules, {"PySide6": qt, "PySide6.QtWidgets": widgets}), \\
+                 patch.dict("os.environ", {"LOCALAPPDATA": td}):
+                try:
+                    exec(bootstrap, ns)
+                    ns["_cn_patch_loaded"]("ichalaunch.ui.widgets.glue_combo",
+                                           types.SimpleNamespace(GlueComboBox=GlueComboBox))
+                    combo = GlueComboBox()
+                    self.assertEqual(combo.currentText(), "Installed")
+                    self.assertEqual(combo.itemText(0), "Installed")
+                    self.assertEqual(combo.paintEvent(None), "已安装")
+                    self.assertEqual(combo.currentText(), "Installed")
+                    combo.selected = 1
+                    self.assertEqual(combo.paintEvent(None), "可用")
+                    self.assertEqual(combo.currentText(), "Available")
+                    option = Option()
+                    combo.view().itemDelegate().initStyleOption(option, Index("All"))
+                    self.assertEqual(option.text, "全部")
+                    self.assertEqual(combo.itemText(2), "All")
+                finally:
+                    sys.meta_path[:] = [
+                        finder for finder in sys.meta_path
+                        if not isinstance(finder, ns.get("_CnFinder", type(None)))
+                    ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
