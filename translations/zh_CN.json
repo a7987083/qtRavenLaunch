@@ -32,5 +32,17 @@
   "Maintenance": "维护",
   "Clear Cache": "清除缓存",
   "Redo Setup": "重新设置",
-  "Check Game Permissions": "检查游戏文件权限"
+  "Check Game Permissions": "检查游戏文件权限",
+  "Defaults to Interface\\AddOns under the game folder when you set or change the game path. Override only if your addons live elsewhere.": "设置或更改游戏目录时，默认使用游戏目录下的 Interface\\AddOns。只有插件位于其他位置时才需要手动指定。",
+  "Download and install the 1.14 client (about 11 GB) into a folder you choose.": "将 1.14 客户端（约 11 GB）下载并安装到指定文件夹。",
+  "Compare game files to the published RavenCraft client. You can check hashes and restore any that do not match.": "将游戏文件与官方发布的 RavenCraft 客户端进行比较，检查哈希并恢复不匹配的文件。",
+  "Unlink the saved WoW folder so you can INSTALL to a new location. Does not delete files on disk.": "解除已保存的 WoW 目录关联，以便在新位置安装；不会删除磁盘上的文件。",
+  "Prompt to fix addon folder / .toc name mismatches": "提示修复插件目录与 .toc 文件名不一致的问题",
+  "Enforce Addon Dependencies": "强制检查插件依赖",
+  "Prompt when SuperWoW and Nampower settings disagree": "SuperWoW 与 Nampower 设置冲突时提示",
+  "Prompt to switch to recommended addon forks": "提示切换至推荐的插件分支版本",
+  "Allow Vanilla Tweaks on unrecognized clients (advanced)": "允许在未识别的客户端上使用 Vanilla Tweaks（高级）",
+  "Send crash and error reports to the maintainer": "向维护者发送崩溃及错误报告",
+  "Reset launcher settings, cached scan data, and saved preferences. Does not delete game or addon files on disk.": "重置启动器设置、缓存扫描数据和保存的偏好设置；不会删除游戏或插件文件。",
+  "Created by Ichabaddie with significant contributions from Valheru and Mynie. Icon by Subtilizer.": "由 Ichabaddie 开发，Valheru 与 Mynie 提供了重要贡献；图标由 Subtilizer 制作。"
 }
