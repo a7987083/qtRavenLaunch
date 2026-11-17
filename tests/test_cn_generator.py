@@ -473,6 +473,57 @@ class GeneratorTests(unittest.TestCase):
                         if not isinstance(finder, ns.get("_CnFinder", type(None)))
                     ]
 
+    def test_client_ui_helper_strings_include_nested_literals(self):
+        # A nested callback/lambda may own the original display string,
+        # even though the parent method does not have it in flat co_consts.
+        ns = {}
+        exec(compile(
+            "class Page:\\n"
+            "    def _build_menu(self):\\n"
+            "        def configure():\\n"
+            "            return 'Performance / Fixes'\\n"
+            "        return configure()\\n"
+            "    def set_check_status(self):\\n"
+            "        return 'BUSINESS_STATUS'\\n",
+            "fixture.py", "exec"), ns)
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64, {}))
+        runtime = {}
+        try:
+            exec(bootstrap, runtime)
+            literals = runtime["_cn_client_ui_literals"](ns["Page"])
+            self.assertIn("Performance / Fixes", literals)
+            self.assertNotIn("BUSINESS_STATUS", literals)
+        finally:
+            sys.meta_path[:] = [x for x in sys.meta_path
+                                if not isinstance(x, runtime.get("_CnFinder", type(None)))]
+
+    def test_glue_panel_button_paint_preserves_navigation_text(self):
+        class GluePanelButton:
+            def __init__(self, caption):
+                self.caption = caption
+            def text(self):
+                return self.caption
+            def paintEvent(self, _event):
+                return self.text()
+
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64,
+            {"Presets": "预设", "Launch": "启动"}))
+        ns = {}
+        try:
+            exec(bootstrap, ns)
+            ns["_cn_patch_loaded"](
+                "ichalaunch.ui.widgets.glue_panel_button",
+                types.SimpleNamespace(GluePanelButton=GluePanelButton))
+            button = GluePanelButton("Presets")
+            self.assertEqual(button.text(), "Presets")
+            self.assertEqual(button.paintEvent(None), "预设")
+            self.assertEqual(button.text(), "Presets")
+        finally:
+            sys.meta_path[:] = [x for x in sys.meta_path
+                                if not isinstance(x, ns.get("_CnFinder", type(None)))]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
