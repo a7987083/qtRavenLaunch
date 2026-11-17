@@ -227,6 +227,107 @@ class GeneratorTests(unittest.TestCase):
                 sys.meta_path[:] = [finder for finder in sys.meta_path
                                     if not isinstance(finder, ns.get("_CnFinder", type(None)))]
 
+    def test_home_adapter_scoped_constructor_refresh_and_diagnostics(self):
+        """Only HOME page's literal display strings are translated."""
+        class QWidget:
+            def __init__(self, value=""):
+                self.value = value
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+            def toolTip(self):
+                return getattr(self, "tooltip", "")
+            def setToolTip(self, value):
+                self.tooltip = value
+            def objectName(self):
+                return getattr(self, "name", "")
+        class QLabel(QWidget):
+            pass
+        class QAbstractButton(QWidget):
+            pass
+        class FakeHomePage:
+            def __init__(self):
+                self.register = QAbstractButton("Register")
+                self.register.tooltip = "Create a RavenCraft account"
+                self.dynamic = QLabel("Unrelated widget from another page")
+                self.state = QLabel("UPDATE")
+                self.children = [self.register, self.dynamic, self.state]
+            def findChildren(self, typ):
+                return [widget for widget in self.children if isinstance(widget, typ)]
+            def refresh(self):
+                self.summary = QLabel("Installed client mods")
+                self.children.append(self.summary)
+
+        translation = {
+            "Register": "注册", "Create a RavenCraft account": "创建账号",
+            "Unrelated widget from another page": "其他页面",
+            "Installed client mods": "已安装的客户端模组",
+            "UPDATE": "更新",
+        }
+        code = compile("pass", "run.py", "exec")
+        bootstrap = marshal.loads(make_bootstrap(code, "a" * 64, translation))
+        fake_qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget, widgets.QLabel = QWidget, QLabel
+        widgets.QAbstractButton = QAbstractButton
+        fake_qt.QtWidgets = widgets
+        ns = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(sys.modules, {"PySide6": fake_qt,
+                                          "PySide6.QtWidgets": widgets}), \
+                 patch.dict("os.environ", {"LOCALAPPDATA": tmp}):
+                try:
+                    exec(bootstrap, ns)
+                    ns["_cn_patch_loaded"]("ichalaunch.ui.pages.home",
+                                           types.SimpleNamespace(HomePage=FakeHomePage))
+                    page = FakeHomePage()
+                    self.assertEqual(page.register.text(), "注册")
+                    self.assertEqual(page.register.toolTip(), "创建账号")
+                    self.assertEqual(page.dynamic.text(), "Unrelated widget from another page")
+                    self.assertEqual(page.state.text(), "UPDATE")
+                    page.refresh()
+                    self.assertEqual(page.summary.text(), "已安装的客户端模组")
+                    journal = Path(tmp) / "RavenLaunch-CN" / "translation-coverage.jsonl"
+                    events = [__import__("json").loads(line)
+                              for line in journal.read_text(encoding="utf-8").splitlines()]
+                    self.assertTrue(any(e["event"] == "applied" and e["source"] == "Register"
+                                        for e in events))
+                    self.assertTrue(any(e["event"] == "adapter-ready" and e["page"] == "home"
+                                        for e in events))
+                finally:
+                    sys.meta_path[:] = [
+                        finder for finder in sys.meta_path
+                        if not isinstance(finder, ns.get("_CnFinder", type(None)))
+                    ]
+
+    def test_page_adapter_missing_class_is_logged_not_crash(self):
+        code = compile("pass", "run.py", "exec")
+        bootstrap = marshal.loads(make_bootstrap(code, "a" * 64, {"Register": "注册"}))
+        fake_qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget = type("QWidget", (), {})
+        widgets.QLabel = type("QLabel", (widgets.QWidget,), {})
+        widgets.QAbstractButton = type("QAbstractButton", (widgets.QWidget,), {})
+        fake_qt.QtWidgets = widgets
+        ns = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(sys.modules, {"PySide6": fake_qt,
+                                          "PySide6.QtWidgets": widgets}), \
+                 patch.dict("os.environ", {"LOCALAPPDATA": tmp}):
+                try:
+                    exec(bootstrap, ns)
+                    ns["_cn_patch_loaded"]("ichalaunch.ui.pages.client",
+                                           types.SimpleNamespace())
+                    journal = Path(tmp) / "RavenLaunch-CN" / "translation-coverage.jsonl"
+                    self.assertIn('"event": "adapter-missing"',
+                                  journal.read_text(encoding="utf-8"))
+                finally:
+                    sys.meta_path[:] = [
+                        finder for finder in sys.meta_path
+                        if not isinstance(finder, ns.get("_CnFinder", type(None)))
+                    ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
