@@ -96,11 +96,11 @@ _CN_SETTINGS_UI_KEYS = frozenset((
 ))
 
 
-def _cn_patch_widget(cls, draw_method, translations):
+def _cn_patch_widget(cls, draw_method, translations, reader_name="text"):
     if getattr(cls, "_raven_cn_patched", False):
         return
     draw = getattr(cls, draw_method)
-    text = getattr(cls, "text")
+    text = getattr(cls, reader_name)
 
     def _cn_text(self):
         value = text(self)
@@ -116,9 +116,53 @@ def _cn_patch_widget(cls, draw_method, translations):
         finally:
             self._raven_cn_paint_depth = depth
 
-    cls.text = _cn_text
+    setattr(cls, reader_name, _cn_text)
     setattr(cls, draw_method, _cn_draw)
     cls._raven_cn_patched = True
+
+
+def _cn_patch_glue_combo(module):
+    """Paint-only localized combo text; keep Qt model DisplayRole untouched."""
+    cls = getattr(module, "GlueComboBox", None)
+    if cls is None or getattr(cls, "_raven_cn_combo_patched", False):
+        return
+    from PySide6.QtWidgets import QStyledItemDelegate
+
+    # The original combo draws its closed-state caption with
+    # self.currentText() inside paintEvent. The old result is still returned
+    # everywhere else (including business filter/routing code).
+    _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS,
+                     reader_name="currentText")
+    old_init = cls.__init__
+
+    class _CnComboDisplayDelegate(QStyledItemDelegate):
+        # Original popup model/index is never changed. Qt calls
+        # initStyleOption() during delegate painting and supplies the actual
+        # DisplayRole label. Override only the presentation string.
+        def initStyleOption(self, option, index):
+            super().initStyleOption(option, index)
+            original = option.text
+            translated = _CN_TRANSLATIONS.get(original)
+            if translated and translated != original:
+                option.text = translated
+                _cn_log("combo-popup-applied", "addons", original)
+
+    def init_translated(self, *args, **kwargs):
+        old_init(self, *args, **kwargs)
+        view = self.view()
+        # An upstream non-standard delegate may provide additional rendering
+        # semantics; do not silently override it.
+        previous = view.itemDelegate()
+        if previous is not None and type(previous) is not QStyledItemDelegate:
+            _cn_log("combo-delegate-skipped", "addons", type(previous).__name__)
+            return
+        delegate = _CnComboDisplayDelegate(view)
+        self._raven_cn_delegate = delegate
+        view.setItemDelegate(delegate)
+        _cn_log("combo-ready", "addons")
+
+    cls.__init__ = init_translated
+    cls._raven_cn_combo_patched = True
 
 
 def _cn_patch_settings_page(module):
@@ -342,6 +386,8 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.glue_combo":
+            _cn_patch_glue_combo(module)
         elif name == "ichalaunch.ui.pages.settings":
             _cn_patch_settings_page(module)
         elif name in _CN_PAGE_CLASSES:
@@ -384,7 +430,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
