@@ -218,3 +218,13 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 - `tests/test_cn_generator.py` 增加针对四类弹窗模拟 Qt QLabel 的回归：文件夹/特殊字符不变、计数参数不变、分段 reset 正文可汉化、推荐仓库名称不变、无关标题不受影响。最初几个 CI 失败源于模拟 Reset 两段文案及推荐说明非原版完整字符串，与白名单精确匹配不一致；已改为真实常量及限定分段逻辑，不能为通过测试而放宽业务字符串保护。
 
 此阶段**没有真实 Windows 启动器完整弹窗实机回归**；Python3.14 CI 只证明合成控件行为、打包成功。用户需核对四种弹窗的标题/正文及按钮响应，尤其查看长文本是否被裁切与更新按钮是否仍正确。
+
+## 可选登录服务器地址：realmList 定向改写（2026-11-17）
+
+生成器 GUI 新增「登录服务器地址（可选，留空使用原版）」输入框。只接受普通 ASCII 域名或 IPv4，例如 apac.capycraft.io；**不填时完全保留官方原版内置 realmlist 资源**。CLI 对应参数为 --login-server apac.capycraft.io。拒绝 URL/路径/端口、引号、换行等无效输入。
+
+根据真正的官方 IchaLaunch.exe（SHA-256 e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697）的 PyInstaller CArchive 字节，确认资源 ichalaunch\\data\\realmlist.wtf，原文 realmList 与 patchList 均为 logon.ravencraft.io。
+
+填写地址时，只改生成版 EXE 中该归档条目的 SET realmList，例如 apac.capycraft.io；**不改 patchList**，不更换客户端资源、游戏文件、更新地址、签名文件或其它 DLL。原版 EXE 不变，原版 SHA 更新比较修复保留。重封装器 assemble() 更新归档偏移，输出回读检查 realmList，原子写入文件。缺少唯一资源、格式异常、输入无效时拒绝输出。
+
+**重要限制：** 修改内置资源还不能证明原版启动器运行时会把该配置写入已安装的客户端，也不证明目标服务器兼容。RavenCraft 的更新/文件校验仍可能覆盖不兼容客户端，避免对 Capycraft 游戏目录使用其更新或修复。Windows CI 仅验证合成归档的资源替换、CRLF 保留、空值完全保留、非法参数拒绝、原版源文件不变和 patchList 不变。真实 Windows 运行及登录未验证。
