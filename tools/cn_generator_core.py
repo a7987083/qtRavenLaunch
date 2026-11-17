@@ -124,6 +124,52 @@ def _cn_patch_widget(cls, draw_method, translations, reader_name="text"):
     cls._raven_cn_patched = True
 
 
+def _cn_patch_theme_nav(module):
+    """Translate CatNavButton's QStyleOption caption, not navigation state."""
+    cls = getattr(module, "ThemeButton", None)
+    if cls is None or getattr(cls, "_raven_cn_theme_nav_patched", False):
+        return
+    old_option = cls.initStyleOption
+    old_text = cls.text
+    old_paint = cls.paintEvent
+
+    def is_nav(widget):
+        return widget.objectName() == "CatNavButton"
+
+    def init_option_translated(self, option):
+        old_option(self, option)
+        if is_nav(self):
+            original = option.text
+            translated = _CN_TRANSLATIONS.get(original)
+            if translated and translated != original:
+                option.text = translated
+                _cn_log("style-applied", "client", original)
+
+    def text_during_paint(self):
+        original = old_text(self)
+        if is_nav(self) and getattr(self, "_raven_cn_theme_paint_depth", 0):
+            translated = _CN_TRANSLATIONS.get(original)
+            if translated:
+                return translated
+        return original
+
+    def paint_translated(self, *args, **kwargs):
+        if not is_nav(self):
+            return old_paint(self, *args, **kwargs)
+        depth = getattr(self, "_raven_cn_theme_paint_depth", 0)
+        self._raven_cn_theme_paint_depth = depth + 1
+        try:
+            return old_paint(self, *args, **kwargs)
+        finally:
+            self._raven_cn_theme_paint_depth = depth
+
+    cls.initStyleOption = init_option_translated
+    cls.text = text_during_paint
+    cls.paintEvent = paint_translated
+    cls._raven_cn_theme_nav_patched = True
+    _cn_log("style-adapter-ready", "client", "CatNavButton")
+
+
 def _cn_patch_glue_combo(module):
     """Paint-only localized combo text; keep Qt model DisplayRole untouched."""
     cls = getattr(module, "GlueComboBox", None)
@@ -448,6 +494,8 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.theme_button":
+            _cn_patch_theme_nav(module)
         elif name == "ichalaunch.ui.widgets.glue_panel_button":
             cls = getattr(module, "GluePanelButton", None)
             if cls is not None:
@@ -500,7 +548,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
