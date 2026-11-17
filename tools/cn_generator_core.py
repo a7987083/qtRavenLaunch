@@ -207,7 +207,7 @@ def _cn_dialog_display_text(source, kind):
 
     if kind == "reset-client-link":
         # The original may pass two static paragraphs as one QLabel body.
-        parts = _cn_re.split(r"(\\n+)", source)
+        parts = _cn_re.split(r"(\n+)", source)
         modified = False
         for i, part in enumerate(parts):
             if part in _CN_PROMPT_STATIC["reset-client-link"]:
