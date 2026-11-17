@@ -1060,7 +1060,7 @@ def replace_realm_login_resource(entry: dict, host: str) -> None:
         decoded = raw.decode("utf-8")
     except UnicodeError as exc:
         raise ValueError("原版 realmlist.wtf 编码不受支持") from exc
-    line = re.compile(r'(?mi)^(SET\s+realmList\s+")[^"\r\n]*(")[ \t]*$')
+    line = re.compile(r'(?mi)^(SET[ \t]+realmList[ \t]+")[^"\r\n]*(")(?=[ \t]*\r?$)')
     matches = list(line.finditer(decoded))
     if len(matches) != 1:
         raise ValueError("原版 realmlist.wtf 中没有唯一的 realmList 配置，拒绝修改")
@@ -1071,12 +1071,14 @@ def replace_realm_login_resource(entry: dict, host: str) -> None:
     entry["raw_size"] = len(new_raw)
 
 
-def generate(source: Path, destination: Path, dictionary_path: Path | None = None, login_server: str | None = None):
+def generate(source: Path, destination: Path, dictionary_path: Path | None = None,
+             login_server: str | None = None):
     require_runtime()
     if source.resolve() == destination.resolve():
         raise ValueError("Output must not overwrite the official EXE")
     if destination.exists():
         raise FileExistsError(f"Output already exists: {destination}")
+    target_login = validate_login_server(login_server)
     original = source.read_bytes()
     start, cookie, entries = read_carchive(original)
     targets = [entry for entry in entries if entry["name"] == "run" and entry["kind"] == b"s"]
@@ -1090,14 +1092,29 @@ def generate(source: Path, destination: Path, dictionary_path: Path | None = Non
     patched = make_bootstrap(script_code, sha256(original), load_translations(dictionary_path))
     script["blob"] = zlib.compress(patched, level=9) if script["compressed"] else patched
     script["raw_size"] = len(patched)
+    changes = ["run"]
+    if target_login is not None:
+        resources = [entry for entry in entries
+                     if entry["name"].replace("/", "\\") == REALMLIST_ENTRY
+                     and entry["kind"] == b"b"]
+        if len(resources) != 1:
+            raise ValueError("未找到唯一的内置 realmlist.wtf，拒绝修改登录服务器")
+        replace_realm_login_resource(resources[0], target_login)
+        changes.append(REALMLIST_ENTRY)
+
     result = assemble(original[:start], cookie, entries)
-    # Validate all archive entries round-trip and actual embedded code object.
     _, _, check_entries = read_carchive(result)
     new_script = next(e for e in check_entries if e["name"] == "run" and e["kind"] == b"s")
     loaded = decode_script(new_script)
     if loaded.co_filename != "<raven-cn-bootstrap>":
         raise AssertionError("Patched entry script missing")
-    changes = [name for name in ("run",)]
+    if target_login is not None:
+        output_entry = next(e for e in check_entries
+                            if e["name"].replace("/", "\\") == REALMLIST_ENTRY)
+        output_raw = (zlib.decompress(output_entry["blob"]) if output_entry["compressed"]
+                      else output_entry["blob"])
+        if ('SET realmList "' + target_login + '"') not in output_raw.decode("utf-8"):
+            raise AssertionError("输出 EXE 的登录服务器未正确写入")
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=destination.parent, prefix=".raven-cn-")
     try:
@@ -1116,7 +1133,9 @@ def generate(source: Path, destination: Path, dictionary_path: Path | None = Non
             "carchive_entries": len(entries), "modified_entries": changes,
             "original_unchanged": source.read_bytes() == original,
             "static_verified": True, "windows_gui_tested": False,
-            "source_digest_used_for_updater_comparison": True}
+            "source_digest_used_for_updater_comparison": True,
+            "login_server_override": target_login,
+            "patch_list_preserved": True}
 
 
 def main():
@@ -1125,8 +1144,10 @@ def main():
     p.add_argument("source", type=Path)
     p.add_argument("--out", type=Path, default=Path("IchaLaunch-CN.exe"))
     p.add_argument("--dictionary", type=Path, help="Optional custom zh_CN.json")
+    p.add_argument("--login-server", help="Optional realmList host; blank = original setting")
     args = p.parse_args()
-    print(json.dumps(generate(args.source, args.out, args.dictionary), ensure_ascii=False, indent=2))
+    print(json.dumps(generate(args.source, args.out, args.dictionary, args.login_server),
+                     ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
