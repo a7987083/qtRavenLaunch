@@ -106,3 +106,19 @@ py -3.14 tools/extract_strings.py "C:\\path\\IchaLaunch.exe" --out zh_CN.json
 **重要：** 单层 JSON 不表示全局字符串替换。只有当前 import hook 支持的导航、启动按钮和部分 SETTINGS 文本会显示译文；填入某条新原文不保证生成的程序能显示它。导出也无法保证覆盖运行时拼接、网络文本、图像字及特殊自绘。脚本输出的模块数是静态扫描模块数，不是 UI 已汉化数量。
 
 字典允许译文为空；空译文会被生成器跳过，保留英文，不会把界面文字绘制为空白。生成的 EXE 官方更新 SHA 兼容逻辑维持不变。词库限制为 2 MiB，重复原文键仍拒绝。
+
+## 2026-11-17 用户反馈：无效 JSON 反斜杠与 SETTINGS 文字遗漏
+
+用户使用 B2.3 生成器及自行编辑的 `zh_CN.json` 时看到 `JSONDecodeError: Invalid \\escape: line 1241 column 25 (char 45435)`。这表示 JSON 解析失败，**不是** CArchive 或生成 EXE 失败；当前缺少用户实际第 1241 行内容，不能确认具体破坏者。常见原因为用户手工添加 Windows 路径（如 `C:\\Games`）时没有双重转义。导出器使用 `json.dumps`，正常生成的 JSON 会正确编码反斜杠。
+
+`tools/cn_generator_core.py` 已将解析失败转为人类可读的行列号及邻近字符串提示。处理失败保留原始 JSON 和原版 EXE，绝不盲目自动修复含糊的转义；用户需修改出错行或上传实际 JSON 才能定位。
+
+另一个真实截图显示 SETTINGS 字段提示：
+
+```text
+Defaults to Interface\AddOns under the game folder when you set or change the game path. Override only if your addons live elsewhere.
+```
+
+原文已在原版 `PYZ.pyz` → `ichalaunch.ui.pages.settings.SettingsPage.__init__` CodeType 常量中确认，不是截图猜测。现在它及其他十余条已核实的 SETTINGS 静态原文已加入局部 `_CN_SETTINGS_UI_KEYS` 和单层词库 `translations/zh_CN.json`。
+
+**保留安全约束：** SETTINGS 适配器只处理 SettingsPage 子控件中的受控静态文字，不改动输入字段、状态栏、业务路由和启动器更新 SHA 逻辑。新增键不保证所有其他 Qt 自绘/动态文字自动汉化。GUI 实机显示及换词库后的游戏功能仍需 Windows 回归。
