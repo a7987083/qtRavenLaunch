@@ -84,5 +84,14 @@
   "Desired state matches installed client.": "目标配置与已安装客户端一致。",
   "Not installed": "未安装",
   "Not checked": "未检查",
-  "Not installed —": "未安装 —"
+  "Not installed —": "未安装 —",
+  "Show status on Discord": "在 Discord 上显示活动状态",
+  "Show character details (name, race, class, guild, zone, level)": "显示角色详情（名称、种族、职业、公会、区域、等级）",
+  "Name": "名称",
+  "Guild": "公会",
+  "Faction": "阵营",
+  "Class": "职业",
+  "Level": "等级",
+  "Zone": "区域",
+  "Show details": "显示详情"
 }
