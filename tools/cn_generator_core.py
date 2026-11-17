@@ -205,6 +205,19 @@ def _cn_dialog_display_text(source, kind):
         if modified:
             return "".join(paragraphs)
 
+    if kind == "reset-client-link":
+        # The original may pass two static paragraphs as one QLabel body.
+        parts = _cn_re.split(r"(\\n+)", source)
+        modified = False
+        for i, part in enumerate(parts):
+            if part in _CN_PROMPT_STATIC["reset-client-link"]:
+                translated = _CN_TRANSLATIONS.get(part)
+                if translated:
+                    parts[i] = translated
+                    modified = True
+        if modified:
+            return "".join(parts)
+
     if kind == "recommended-forks":
         # Rows are display-only; preserve installed/recommended fork names.
         lines = source.splitlines(keepends=True)
