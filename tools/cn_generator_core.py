@@ -274,15 +274,17 @@ def load_translations(path: Path | None = None) -> dict[str, str]:
         raw = dictionary.read_text(encoding="utf-8-sig")
         lines = raw.splitlines()
         bad_line = lines[exc.lineno - 1] if exc.lineno <= len(lines) else ""
-        # A bounded excerpt only; don't show the user's complete dictionary.
         left = max(0, exc.colno - 46)
         right = min(len(bad_line), exc.colno + 34)
         snippet = bad_line[left:right]
-        message = (f"词库 JSON 格式错误：{dictionary.name}\\n"
-                   f"第 {exc.lineno} 行，第 {exc.colno} 列\\n"
-                   f"{exc.msg}\\n附近内容：{snippet}\\n"
-                   "请检查 Windows 路径中的反斜杠：JSON 必须写成 \\\\，"
-                   "例如 C:\\\\Games。原词库未被修改。")
+        message = "\n".join((
+            f"词库 JSON 格式错误：{dictionary.name}",
+            f"第 {exc.lineno} 行，第 {exc.colno} 列",
+            exc.msg,
+            f"附近内容：{snippet}",
+            "如果包含 Windows 路径，请将每个反斜杠写成两个；"
+            "或删除不需要翻译的路径词条。原词库未被修改。",
+        ))
         raise ValueError(message) from exc
     if not isinstance(value, dict):
         raise ValueError("Translation dictionary must be a flat JSON object")
