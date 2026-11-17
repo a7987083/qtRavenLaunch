@@ -494,6 +494,16 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.theme_checkbox":
+            cls = getattr(module, "ThemeCheckBox", None)
+            if cls is not None:
+                _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+                _cn_log("paint-adapter-ready", "client", "ThemeCheckBox")
+        elif name == "ichalaunch.ui.widgets.theme_radio":
+            cls = getattr(module, "ThemeRadioButton", None)
+            if cls is not None:
+                _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+                _cn_log("paint-adapter-ready", "client", "ThemeRadioButton")
         elif name == "ichalaunch.ui.widgets.theme_button":
             _cn_patch_theme_nav(module)
         elif name == "ichalaunch.ui.widgets.glue_panel_button":
@@ -548,7 +558,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
