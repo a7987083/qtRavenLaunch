@@ -47,8 +47,7 @@ import importlib.util as _cn_util
 # Hashing the localized output would always look like an official hotfix.
 _CN_SOURCE_EXE_SHA256 = "__RAVEN_SOURCE_EXE_SHA256__"
 
-_CN_NAV = __RAVEN_CN_NAV_DICTIONARY__
-_CN_LAUNCH = __RAVEN_CN_LAUNCH_DICTIONARY__
+_CN_TRANSLATIONS = __RAVEN_CN_DICTIONARY__
 
 
 def _cn_patch_widget(cls, draw_method, translations):
@@ -81,7 +80,7 @@ def _cn_patch_loaded(name, module):
         if name == "ichalaunch.ui.main_window":
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
-                _cn_patch_widget(cls, "paintEvent", _CN_NAV)
+                _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
         elif name == "ichalaunch.core.self_update":
             original_sha = getattr(module, "_running_launcher_sha256", None)
             if not callable(original_sha):
@@ -96,7 +95,7 @@ def _cn_patch_loaded(name, module):
         elif name == "ichalaunch.ui.widgets.launch_button":
             cls = getattr(module, "LaunchButton", None)
             if cls is not None:
-                _cn_patch_widget(cls, "_paint_label", _CN_LAUNCH)
+                _cn_patch_widget(cls, "_paint_label", _CN_TRANSLATIONS)
     except Exception as exc:
         # A localization issue must not prevent users from launching the game.
         print("RavenLaunch CN: widget adapter unavailable:", exc, file=_cn_sys.stderr)
@@ -148,27 +147,32 @@ def default_dictionary_path() -> Path:
     return root / "translations" / "zh_CN.json"
 
 
-def load_translations(path: Path | None = None) -> dict[str, dict[str, str]]:
+def _unique_json_object(pairs):
+    value = {}
+    for key, translation in pairs:
+        if key in value:
+            raise ValueError(f"Duplicate translation key: {key!r}")
+        value[key] = translation
+    return value
+
+
+def load_translations(path: Path | None = None) -> dict[str, str]:
+    """Flat UTF-8 JSON: one English phrase mapped to one translated phrase."""
     dictionary = path if path is not None else default_dictionary_path()
     if dictionary.stat().st_size > MAX_DICTIONARY_BYTES:
         raise ValueError("Translation dictionary too large")
-    value = json.loads(dictionary.read_text(encoding="utf-8-sig"))
-    if not isinstance(value, dict) or value.get("schema") != 1:
-        raise ValueError("Unsupported translation dictionary schema")
-    result = {}
-    for section in ("nav", "launch"):
-        mapping = value.get(section)
-        if not isinstance(mapping, dict):
-            raise ValueError(f"Missing dictionary section: {section}")
-        checked = {}
-        for source, translated in mapping.items():
-            if not isinstance(source, str) or not source or len(source) > 512:
-                raise ValueError(f"Invalid source label in {section}")
-            if not isinstance(translated, str) or not translated.strip() or len(translated) > 512:
-                raise ValueError(f"Invalid translation in {section}: {source!r}")
-            checked[source] = translated
-        result[section] = checked
-    return result
+    value = json.loads(dictionary.read_text(encoding="utf-8-sig"),
+                       object_pairs_hook=_unique_json_object)
+    if not isinstance(value, dict):
+        raise ValueError("Translation dictionary must be a flat JSON object")
+    checked = {}
+    for source, translated in value.items():
+        if not isinstance(source, str) or not source.strip() or len(source) > 512:
+            raise ValueError("Invalid English source label")
+        if not isinstance(translated, str) or not translated.strip() or len(translated) > 512:
+            raise ValueError(f"Invalid translation for {source!r}")
+        checked[source] = translated
+    return checked
 
 
 def require_runtime():
@@ -234,11 +238,10 @@ def make_bootstrap(original, source_sha256, translations=None):
     if translations is None:
         translations = load_translations()
     source = BOOTSTRAP_SOURCE.replace("__RAVEN_SOURCE_EXE_SHA256__", source_sha256)
-    for name, section in (("__RAVEN_CN_NAV_DICTIONARY__", "nav"),
-                          ("__RAVEN_CN_LAUNCH_DICTIONARY__", "launch")):
-        if source.count(name) != 1:
-            raise ValueError(f"Missing bootstrap dictionary marker: {name}")
-        source = source.replace(name, repr(translations[section]))
+    marker = "__RAVEN_CN_DICTIONARY__"
+    if source.count(marker) != 1:
+        raise ValueError("Missing bootstrap dictionary marker")
+    source = source.replace(marker, repr(translations))
     source = source.replace("exec(_RAVEN_ORIGINAL_RUN_CODE_)",
                                       "exec('__RAVEN_ORIGINAL_RUN_CODE__')")
     wrapped = compile(source, "<raven-cn-bootstrap>", "exec")
