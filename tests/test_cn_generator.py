@@ -42,6 +42,74 @@ class GeneratorTests(unittest.TestCase):
             original = [c for c in script.co_consts if hasattr(c, 'co_code')]
             self.assertTrue(any('ichalaunch' in c.co_names for c in original))
 
+    def test_login_prelaunch_writes_custom_realm_before_calling_official_game(self):
+        from cn_generator_core import make_bootstrap
+        import types as _types
+        events = []
+        class Row:
+            needs_update = False
+        realm = _types.SimpleNamespace(
+            _raven_cn_realm_patched=True,
+            apply_ravencraft_realm_endpoints=lambda game:
+                events.append(("write-realm", game)),
+            inspect_realm_endpoints=lambda game: [Row()],
+        )
+        game_pkg = _types.ModuleType("ichalaunch.game")
+        game_pkg.realmlist_wtf = realm
+        parent = _types.ModuleType("ichalaunch")
+        parent.game = game_pkg
+        launcher = _types.SimpleNamespace(
+            detect_game=lambda: Path("D:/Game"),
+            launch_game=lambda *a, **kw: events.append(("original-launch", kw))
+        )
+        ns = {}
+        with patch.dict(sys.modules, {
+            "ichalaunch": parent,
+            "ichalaunch.game": game_pkg,
+            "ichalaunch.game.realmlist_wtf": realm,
+        }):
+            try:
+                exec(marshal.loads(make_bootstrap(
+                    compile("pass", "test-run", "exec"), "a" * 64,
+                    {}, "apac.capycraft.io")), ns)
+                ns["_cn_patch_loaded"]("ichalaunch.game.launcher", launcher)
+                launcher.launch_game(force_direct=True)
+                self.assertEqual(events, [
+                    ("write-realm", Path("D:/Game")),
+                    ("original-launch", {"force_direct": True}),
+                ])
+                self.assertTrue(launcher._raven_cn_launch_host_patched)
+
+                events.clear()
+                realm.inspect_realm_endpoints = lambda game: [
+                    _types.SimpleNamespace(needs_update=True)
+                ]
+                with self.assertRaisesRegex(RuntimeError,
+                                            "Cannot safely apply custom"):
+                    launcher.launch_game()
+                self.assertEqual(events, [("write-realm", Path("D:/Game"))])
+            finally:
+                sys.meta_path[:] = [finder for finder in sys.meta_path
+                    if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
+    def test_login_prelaunch_blank_mode_does_not_write_config(self):
+        from cn_generator_core import make_bootstrap
+        launcher = types.SimpleNamespace(
+            detect_game=lambda: Path("D:/Game"),
+            launch_game=lambda: "official-launch",
+        )
+        original = launcher.launch_game
+        ns = {}
+        try:
+            exec(marshal.loads(make_bootstrap(
+                compile("pass", "test-run", "exec"), "a" * 64, {}, None)), ns)
+            ns["_cn_patch_loaded"]("ichalaunch.game.launcher", launcher)
+            self.assertIs(launcher.launch_game, original)
+            self.assertEqual(launcher.launch_game(), "official-launch")
+        finally:
+            sys.meta_path[:] = [finder for finder in sys.meta_path
+                if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
     def test_custom_login_runtime_scoped_to_realm_only(self):
         from dataclasses import dataclass
         from cn_generator_core import make_bootstrap
