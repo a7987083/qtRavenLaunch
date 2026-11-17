@@ -377,7 +377,7 @@ class GeneratorTests(unittest.TestCase):
         qt.QtWidgets = widgets
         ns = {}
         with tempfile.TemporaryDirectory() as td:
-            with patch.dict(sys.modules, {"PySide6": qt, "PySide6.QtWidgets": widgets}), \\
+            with patch.dict(sys.modules, {"PySide6": qt, "PySide6.QtWidgets": widgets}), \
                  patch.dict("os.environ", {"LOCALAPPDATA": td}):
                 try:
                     exec(bootstrap, ns)
