@@ -1020,7 +1020,138 @@ def assemble(prefix, cookie, entries):
     return prefix + payload + toc + footer
 
 
-def generate(source: Path, destination: Path, dictionary_path: Path | None = None):
+REALMLIST_ENTRY = "ichalaunch\\\\data\\\\realmlist.wtf"
+
+
+def validate_login_server(value: str | None) -> str | None:
+    """Optional ASCII DNS hostname or IPv4 address; blank = preserve source."""
+    import ipaddress
+    import re
+    if value is None or not value.strip():
+        return None
+    host = value.strip()
+    if len(host) > 253 or any(ord(c) > 127 for c in host):
+        raise ValueError("登录服务器仅支持 ASCII 域名或 IPv4 地址")
+    if any(c in host for c in '\\r\\n\\t"\\\\/ :'):
+        raise ValueError("登录服务器只能填写域名或 IPv4，不能带协议、端口或路径")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None:
+        if address.version != 4:
+            raise ValueError("登录服务器暂不支持 IPv6")
+        return host
+    if not all(
+        re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+        for label in host.split(".")
+    ):
+        raise ValueError("登录服务器域名格式无效")
+    return host
+
+
+def replace_realm_login_resource(entry: dict, host: str) -> None:
+    """Patch only SET realmList in the known resource; preserve patchList.
+
+    Fail closed on missing/ambiguous realmlist lines or unknown encodings.
+    """
+    import re
+    raw = zlib.decompress(entry["blob"]) if entry["compressed"] else entry["blob"]
+    if len(raw) != entry["raw_size"] or len(raw) > 64 * 1024:
+        raise ValueError("原版 realmlist.wtf 内容大小异常")
+    try:
+        decoded = raw.decode("utf-8")
+    except UnicodeError as exc:
+        raise ValueError("原版 realmlist.wtf 编码不受支持") from exc
+    line = re.compile(r'(?mi)^(SET\\s+realmList\\s+")[^"\\r\\n]*(")[ \\t]*
+    require_runtime()
+    if source.resolve() == destination.resolve():
+        raise ValueError("Output must not overwrite the official EXE")
+    if destination.exists():
+        raise FileExistsError(f"Output already exists: {destination}")
+    target_login = validate_login_server(login_server)
+    original = source.read_bytes()
+    start, cookie, entries = read_carchive(original)
+    targets = [entry for entry in entries if entry["name"] == "run" and entry["kind"] == b"s"]
+    if len(targets) != 1:
+        raise ValueError("Target has no unique supported 'run' launcher entry")
+    script = targets[0]
+    script_code = decode_script(script)
+    required = {"ichalaunch", "main"}
+    if not required.issubset(script_code.co_names):
+        raise ValueError("Launcher does not have the expected IchaLaunch Python entry")
+    patched = make_bootstrap(script_code, sha256(original), load_translations(dictionary_path))
+    script["blob"] = zlib.compress(patched, level=9) if script["compressed"] else patched
+    script["raw_size"] = len(patched)
+    changes = ["run"]
+    if target_login is not None:
+        resources = [entry for entry in entries
+                     if entry["name"].replace("/", "\\\\") == REALMLIST_ENTRY
+                     and entry["kind"] == b"b"]
+        if len(resources) != 1:
+            raise ValueError("未找到唯一的内置 realmlist.wtf，拒绝修改登录服务器")
+        replace_realm_login_resource(resources[0], target_login)
+        changes.append(REALMLIST_ENTRY)
+    result = assemble(original[:start], cookie, entries)
+    # Validate all archive entries round-trip and actual embedded code object.
+    _, _, check_entries = read_carchive(result)
+    new_script = next(e for e in check_entries if e["name"] == "run" and e["kind"] == b"s")
+    loaded = decode_script(new_script)
+    if loaded.co_filename != "<raven-cn-bootstrap>":
+        raise AssertionError("Patched entry script missing")
+    if target_login is not None:
+        output_entry = next(e for e in check_entries if e["name"] == REALMLIST_ENTRY)
+        output_raw = (zlib.decompress(output_entry["blob"]) if output_entry["compressed"]
+                      else output_entry["blob"])
+        if ('SET realmList "' + target_login + '"') not in output_raw.decode("utf-8"):
+            raise AssertionError("输出 EXE 的登录服务器未正确写入")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=destination.parent, prefix=".raven-cn-")
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(result)
+            output.flush()
+            os.fsync(output.fileno())
+        if destination.exists():
+            raise FileExistsError(destination)
+        os.replace(tmp, destination)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return {"source_sha256": sha256(original), "output_sha256": sha256(result),
+            "source_bytes": len(original), "output_bytes": len(result),
+            "carchive_entries": len(entries), "modified_entries": changes,
+            "original_unchanged": source.read_bytes() == original,
+            "static_verified": True, "windows_gui_tested": False,
+            "source_digest_used_for_updater_comparison": True,
+            "login_server_override": target_login,
+            "patch_list_preserved": True}
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("source", type=Path)
+    p.add_argument("--out", type=Path, default=Path("IchaLaunch-CN.exe"))
+    p.add_argument("--dictionary", type=Path, help="Optional custom zh_CN.json")
+    p.add_argument("--login-server", help="Optional realmList hostname or IPv4; blank preserves official default")
+    args = p.parse_args()
+    print(json.dumps(generate(args.source, args.out, args.dictionary, args.login_server), ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+)
+    matches = list(line.finditer(decoded))
+    if len(matches) != 1:
+        raise ValueError("原版 realmlist.wtf 中没有唯一的 realmList 配置，拒绝修改")
+    replaced = decoded[:matches[0].start(1)] + matches[0].group(1) + host + matches[0].group(2) + decoded[matches[0].end(2):]
+    new_raw = replaced.encode("utf-8")
+    entry["blob"] = zlib.compress(new_raw, 9) if entry["compressed"] else new_raw
+    entry["raw_size"] = len(new_raw)
+
+
+def generate(source: Path, destination: Path, dictionary_path: Path | None = None, login_server: str | None = None):
     require_runtime()
     if source.resolve() == destination.resolve():
         raise ValueError("Output must not overwrite the official EXE")
