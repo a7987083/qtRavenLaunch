@@ -96,3 +96,13 @@ Run isolated generator against the real original executable on a trusted Windows
 - 最新完整 Windows Actions Run `44046522951` completed/success：Python3.14 syntax + all synthetic tests + PyInstaller EXE build + artifact upload 通过；没有对生成后的真实游戏窗口或实机验证。
 - 风险：未知自绘 QWidget 可能没有 text/setText API，日志记录 unsupported-control，不强行修改；动态进度文本和未列入 page constructor 的文字可能仍为英文；类方法级 Hook 与原版官方更新后接口差异需重新验证。业务状态逻辑和 SHA-256 误报修复未移除。
 - 下一步用户本机运行最新 generator，再从未经修改的原版 EXE 生成不同输出路径、打开四页、检查视觉、拖动、更新检测和功能，点击「查看翻译诊断」上传 summary.json 或截图，定位实际未命中的控件，再小范围扩展，不盲目全局替换。
+
+## 2026-11-17 B2.4.2：真正修复 ADDONS 筛选显示层，补 CLIENT 异步刷新
+- 用户上传 8 张真实 GUI 图片和 `translation-coverage-summary.json`，诊断：`source_hash=e54556fa8711`、五个页面 ready、67 已应用、781 未观察到、唯一 warning `home/TitleLockup`。观察：ADDONS 的 Installed 等筛选按钮和下拉项仍显示英文；CLIENT 修复页左侧 Presets/Launch/Performance/HD Graphics/Advanced 等没有完全汉化；1.14 Cinder 数据描述仍英文；GAME UPDATE 弹窗标题、正文、按钮仍英文。**不能把 67 条 applied 误当 67 条视觉正确**。
+- 经原版 `/mnt/data/_tmp_original.pyz` 真实 `ichalaunch.ui.widgets.glue_combo` CodeType 验证：`GlueComboBox.paintEvent` 调用 `self.currentText()` 和 QPainter.drawText；`AddonsPage._apply_filter_mode` 使用 `filter_box.currentText()` 做筛选状态判断。`GlueComboBox.__init__` 设置了 `_MarbleComboView`；该 view 没有自定义 item delegate。禁止直接 `setItemText` 修改筛选语义。
+- `tools/cn_generator_core.py` 增加针对 `ichalaunch.ui.widgets.glue_combo.GlueComboBox` 的专用导入适配：`paintEvent` 期间才把 `currentText()` 返回值映射为中文，函数外保持原始英文；popup 中用独立 `QStyledItemDelegate.initStyleOption` 只改 `option.text`，不改 model DisplayRole 或 currentText/itemText。发现已存在非默认 Delegate 就 fail-open 并记 `combo-delegate-skipped`。同文件 `_cn_patch_widget` 新增 optional reader_name 参数，旧 Nav/Launch 仍按 text() 工作。`_CnFinder` 新增 glue_combo。
+- CLIENT 增加 `_add_presets_page`、`refresh_from_settings`、`refresh_plan`、`_refresh_patch9_banner` 静态字符串候选，并在后三个刷新函数后进行页面范围安全重扫；1.14 插件页也在 `_build_rows`、`refresh_status` 后重扫。仅对受控 Qt QLabel/QAbstractButton/已知自绘类中精确匹配的 UI 原文尝试 setText；继续排除状态路径和输入框，未做全局 setText。
+- `tests/test_cn_generator.py` 新增两个合成测试，确认 combo 按钮和 popup 中文但 currentText/itemText 原始英文不变，以及 ClientPage helper/refresh 有翻译、status 不受影响。中途测试 Python 转义书写出现真实 CI 失败，后续 `343e24de` 更正；最新含全部实现的 CI Run `44050134019` completed/success，Python3.14 tests + standalone Windows EXE build + artifact upload。
+- `GENERATOR_README.md` 已记录 B2.4.2 调用链和边界。**尚未实机回归**：真实 PySide6 下 QStyledItemDelegate paint 是否匹配主题布局、四个筛选业务是否完整、ClientPage 异步子控件覆盖、游戏更新弹窗，均未在用户 Windows 验证。
+- 重要首个下一任务：真实 Windows 上打开新生成的 IchaLaunch-CN.exe 的 ADDONS 筛选 Installed/Available/Update Available/All 四个选项，检验显示中文但过滤正确；再打开 CLIENT 的 Presets/Launch/Performance/HD Graphics 页面、确认是否增加实际命中。若失败，上传最新 `translation-coverage-summary.json` 和界面截图。
+- GAME UPDATE 弹窗的动态数字拼接仍未进行安全适配；应以目标版真实 Py3.14 字节码定位弹窗构造函数/具体调用点，再做显示层翻译，禁止把全局 QDialog.setText 当作解决方案。
