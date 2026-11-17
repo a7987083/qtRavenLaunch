@@ -643,6 +643,50 @@ class GeneratorTests(unittest.TestCase):
                         if not isinstance(finder, ns.get("_CnFinder", type(None)))
                     ]
 
+    def test_client_checkboxes_and_radio_paint_only_keep_business_values(self):
+        """Qt self-drawn controls display Chinese without modifying their text or state."""
+        class FakeChoice:
+            def __init__(self, label):
+                self.label = label
+                self.checked = True
+            def text(self):
+                return self.label
+            def isChecked(self):
+                return self.checked
+            def paintEvent(self, event):
+                return (self.text(), self.isChecked())
+        class ThemeCheckBox(FakeChoice):
+            pass
+        class ThemeRadioButton(FakeChoice):
+            pass
+
+        mapping = {
+            "Minimize launcher when game starts": "游戏启动时最小化启动器",
+            "None": "无",
+        }
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64, mapping))
+        ns = {}
+        try:
+            exec(bootstrap, ns)
+            ns["_cn_patch_loaded"]("ichalaunch.ui.widgets.theme_checkbox",
+                                   types.SimpleNamespace(ThemeCheckBox=ThemeCheckBox))
+            ns["_cn_patch_loaded"]("ichalaunch.ui.widgets.theme_radio",
+                                   types.SimpleNamespace(ThemeRadioButton=ThemeRadioButton))
+            check = ThemeCheckBox("Minimize launcher when game starts")
+            radio = ThemeRadioButton("None")
+            self.assertEqual(check.paintEvent(None), ("游戏启动时最小化启动器", True))
+            self.assertEqual(check.text(), "Minimize launcher when game starts")
+            self.assertTrue(check.isChecked())
+            self.assertEqual(radio.paintEvent(None), ("无", True))
+            self.assertEqual(radio.text(), "None")
+            self.assertTrue(radio.isChecked())
+        finally:
+            sys.meta_path[:] = [
+                finder for finder in sys.meta_path
+                if not isinstance(finder, ns.get("_CnFinder", type(None)))
+            ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
