@@ -1,0 +1,41 @@
+name: Build RavenLaunch CN Generator
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/cn_generator_core.py'
+      - 'tools/cn_generator_gui.py'
+      - 'tests/test_cn_generator.py'
+      - '.github/workflows/build-cn-generator.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install packager
+        run: python -m pip install pyinstaller==6.22.3
+      - name: Syntax and generator tests
+        shell: pwsh
+        run: |
+          python -m compileall -q tools/cn_generator_core.py tools/cn_generator_gui.py tests/test_cn_generator.py
+          python -m unittest discover -s tests -p 'test_cn_generator.py' -v
+      - name: Build standalone generator
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name RavenLaunch-CN-Generator tools/cn_generator_gui.py
+      - name: Verify built EXE
+        shell: pwsh
+        run: |
+          if (!(Test-Path dist/RavenLaunch-CN-Generator.exe)) { throw 'Generator EXE missing' }
+          Get-FileHash dist/RavenLaunch-CN-Generator.exe -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RavenLaunch-CN-Generator-Windows
+          path: dist/RavenLaunch-CN-Generator.exe
+          retention-days: 30
