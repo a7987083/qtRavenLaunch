@@ -66,3 +66,13 @@ Run isolated generator against the real original executable on a trusted Windows
 - Windows GitHub Actions `44040239729` **completed/success**，生成器构建并上传 artifact。注意中间 d688 阶段 CI fail 是旧合成测试仍使用过时字符串，已由 27b6 重新校准通过。
 - 仍**未验证新版真实 Windows GUI 是否正确显示**。下一步用户用新版生成器从官方 EXE 重新生成新文件，检查 SETTINGS 对应英文变化，以及旧 SHA 更新误报不复现；若仍失败先在真实 Qt 控件核对是否支持 text/setText，避免猜测。
 - 用户最后一句“其次”尚未完整表达第二个问题；等待其补充。
+
+## 2026-11-17 B2.3 — 从官方 EXE 自动导出原文到 zh_CN.json
+- 用户要求按钮「导出原始字符串」，输出标准单层 `zh_CN.json`，`"英文原文": ""` 一行一个，不含 schema/nav/launch。填写后 GUI 选同一词库生成新版 EXE。官方更新时重新导出，应保留旧译文并增量新增词条。
+- `tools/extract_strings.py` 新增：要求 CPython 3.14，使用现有 `read_carchive()`，定位 `PYZ.pyz`，按 PYZ Header 12 字节偏移及 marshal TOC 提取 `ichalaunch.ui.*`、`ichalaunch.app` CodeType；递归扫描 `co_consts` / tuple 中的真实字符串，保留大小写/空格/Unicode 标点；启发式过滤明显路径、资源文件、URL 和技术标识符。**仅是 UI 候选，非完整静态/运行时内容，更不代表全部可安全替换。**
+- `export_strings(source, output)` 默认合并旧词库，空译文新键追加、已翻译键保留，不删除旧键；失败时通过先扫描、临时文件、os.replace 保持原词库，禁止覆盖输入 EXE。
+- `tools/cn_generator_gui.py` 增加「导出原始字符串」按钮，用户选原版后可用保存对话框决定输出路径；同名已存在时弹窗确认保留译文合并，成功后自动将输出 JSON 选为本次生成的自定义词库。
+- `tools/cn_generator_core.py` 中 `load_translations()` 允许空译文，打包时过滤空词条，避免输出空标签；字典最大容量扩至 2MiB，原版更新 SHA 兼容修复/业务状态隔离保持不变。
+- `tests/test_extract_strings.py` 对合成 PYZ/CArchive、嵌套 CodeType/tuple 原文、Unicode 省略号、非 UI URL 过滤、空译文、保留旧翻译、重复导出、失败不破坏旧词库、禁止覆盖执行文件等测试。Windows CI 运行 Python3.14；workflow 已编译脚本并执行 `test_*.py`，PyInstaller 可自动捆绑新增 extractor 模块。
+- 截至此处代码已推送到 main；**还未在用户真实 Windows 上验证从官方 EXE 完整提取及 GUI 按钮/生成/游戏启动**。因为真实原版 EXE 未上传 GitHub CI，工作流只能运行合成归档测试。若真实文件上失败，优先以首次 Python/GUI 错误为准。
+- 用户以前真实 SETTINGS 全英文的回归仍需另行实机确认修复；不要把词库增加等同于扩大 Qt Hook 覆盖。
