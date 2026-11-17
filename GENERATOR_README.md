@@ -170,3 +170,19 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 - 新增 Python3.14 合成测试：嵌套 UI 函数常量能收集但状态 setter 常量不应收集；GluePanelButton.paintEvent 临时显示中文，调用前后 `text()` 始终英文。第一处真实 CI 错误：测试样本使用双转义 `\\n` 而非换行，Run `44052350382` 在 `fixture.py` SyntaxError；Commit `43ef06ba` 修复后 Run `44052492032` 成功。
 - **未改动 Pending 动态状态、GAME UPDATE 弹窗或 1.14 外部插件说明的业务文字**。Pending 属于动态字符串，应查清生成位置和读回路径，不能直接全局替换 QLabels；不应把这条描述成已修复。
 - 实机验证：用最新 generator 重新生成新 EXE，确认使用的 JSON 包含相关英文键；打开 CLIENT 页并切换左侧 5+ 分类；检查侧边显示和导航功能，查看 `translation-coverage.jsonl` 的 `paint-adapter-ready` / `adapter-error`。若左侧仍英文，需要继续用真实 Python 3.14 字节码核对 GluePanelButton 的绘制字段，不能猜测其 API。
+
+## B2.4.6 — CLIENT 模组说明 / Launch 选项回归修复
+
+用户真实 Windows 截图证明上一版 CatNavButton 已经成功将左侧 Presets/Launch/Performance/HD Graphics/Visual/Advanced 显示成中文，导航问题得到首次实机可视确认。当前未完成的是右侧 CLIENT 模组列表（Vanilla Tweaks V2 描述和 Not installed）以及 Launch 页面的一批自绘复选框文字。
+
+本次按原版 `IchaLaunch.exe` 中 `PYZ.pyz` 可解析 CodeType 元数据确认：
+- `ichalaunch.ui.widgets.theme_checkbox.ThemeCheckBox.paintEvent` 在 Python 绘制过程中访问 `self.text()` 并调用 `QPainter.drawText`；
+- `ichalaunch.ui.widgets.theme_radio.ThemeRadioButton.paintEvent` 使用同类路径。
+新增两个专属 Import Hook，使用现有 `_cn_patch_widget` 仅在 `paintEvent` 中把 `text()` 暂时返回词库中文，函数外一律保持英文，包括 `isChecked()` 勾选业务状态。**是否所有截图中的控件均属于这两类，仍需实机观察，CI 只模拟该行为。**
+
+审计发现当前 GitHub 内置 `translations/zh_CN.json` 并没有用户截图的 8 条 Launch 复选框原文；已经按真实截图补齐。若使用外部自定义 JSON，需要由用户合入这些键值，生成器绝不改写其原词库。
+
+用户截图 `Patches WoW.exe (not a DLL)...` 的 Vanilla Tweaks 说明来自 CLIENT 模组信息，不一定在 ClientPage 构造代码常量中。新增极窄 `_CN_CLIENT_DETAIL_KEYS`，**只允许两条已确认的纯说明字符串** 在 `ClientPage` 下的 QLabel 上绕过构造常量约束应用词库，仍不碰行状态 `Not installed`、模组名版本及动态业务值。其它目录/下载远端说明仍未覆盖。
+
+补 `tests/test_cn_generator.py` 模拟自绘 Checkbox/Radio 保持勾选和值，和 CLIENT 说明 QLabel 翻译但跳过状态/模组标识。
+需要用户 Windows 重新生成并打开 Launch/Performance 页面，检查中文截断、复选框可点击、勾选值正确、模组信息清单及无更新误报；本轮未实机验证，不可宣称全部修好。
