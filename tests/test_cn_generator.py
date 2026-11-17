@@ -246,11 +246,12 @@ class GeneratorTests(unittest.TestCase):
             pass
         class QAbstractButton(QWidget):
             pass
+        foreign_dynamic_text = "Unrelated widget from another page"
         class FakeHomePage:
             def __init__(self):
                 self.register = QAbstractButton("Register")
                 self.register.tooltip = "Create a RavenCraft account"
-                self.dynamic = QLabel("Unrelated widget from another page")
+                self.dynamic = QLabel(foreign_dynamic_text)
                 self.state = QLabel("UPDATE")
                 self.children = [self.register, self.dynamic, self.state]
             def findChildren(self, typ):
