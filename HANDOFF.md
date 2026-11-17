@@ -54,3 +54,15 @@ Run isolated generator against the real original executable on a trusted Windows
 - 加入合成 Qt 测试 `test_settings_static_labels_and_refresh_only`，证明已列入白名单的标签更新、非白名单 `UPDATE` 状态保持英文。Python 3.14 Windows Actions Run `44038920863` completed/success；**实际生成 EXE 后打开 SETTINGS 页面尚未实机验证**。
 - 当前工作树所有远端修改均提交 main；不要改写指定历史提交。
 - 下一步：使用新版生成器，选择未经改动的原版 EXE，生成新的 IchaLaunch-CN.exe；在 Windows 依次检查 SETTINGS 标题、游戏客户端、游戏目录、按钮、刷新后文本、导航、官方更新提示状态和游戏启动。若有英文未捕获，优先检查对象类型与确切字符串，避免继续盲目添加翻译键。
+
+## 2026-11-17 B2.2 SETTINGS 全英文实机反馈与修正
+- 用户最新真实 Windows 截图：顶部旧的导航汉化仍生效；但 SETTINGS 正文 `SETTINGS`, `GAME CLIENT`, `GAME LOCATION`, `BROWSE...`, `VERIFY` 和 `SAVE` 均为英文。此为此前 B2.2 **GUI 回归失败**，此前 CI 不等同实机成功。
+- 以原样本 `/mnt/data/IchaLaunch.exe` （SHA-256 `e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697`）提取 `PYZ.pyz` 中 `ichalaunch.ui.pages.settings` code object；3.13 marshal 可读取该 SettingsPage 模块的 co_consts/元信息但**不用于解释 Python 3.14 指令**。
+- 确证 SETTINGS 实际字符串：`Settings`, `Game client`, `Game location`, `AddOns folder`, `Browse…`, `Install…`, `Verify`, `Reset Client Link`, `Save`; 1.12/1.14 描述使用双空格，ellipsis 是 U+2026。旧版字典源键误按截图转为全大写/ASCII 三点，因此不匹配。
+- 模块 co_names 同时显示 `GradientLabel`, `GluePanelButton`, `ThemeRadioButton`, `ThemeCheckBox`，旧 SETTINGS 适配器仅遍历 `QLabel/QAbstractButton` 有覆盖风险。
+- 新提交 `d6886091`：精确 SETTINGS 原文 allowlist、遍历 SETTINGS 页 `QWidget` descendants，仍只对 standard QLabel/QAbstractButton 或四种明确白名单 Qt 自绘控件且确切匹配静态原文时 setText。绝不全局拦截 setText，输入框和 status label 被排除。
+- `d9ec3c46`：调整 `translations/zh_CN.json` 为真实 PYZ 常量键、增加 Save 等，共 34 条；保持纯单层 `"English": "中文"`，无 schema。
+- `27b6047c`：Python3.14 mock Qt tests 中验证 GradientLabel/GluePanelButton/普通标签/刷新、输入框及 UPDATE 业务标签排除。
+- Windows GitHub Actions `44040239729` **completed/success**，生成器构建并上传 artifact。注意中间 d688 阶段 CI fail 是旧合成测试仍使用过时字符串，已由 27b6 重新校准通过。
+- 仍**未验证新版真实 Windows GUI 是否正确显示**。下一步用户用新版生成器从官方 EXE 重新生成新文件，检查 SETTINGS 对应英文变化，以及旧 SHA 更新误报不复现；若仍失败先在真实 Qt 控件核对是否支持 text/setText，避免猜测。
+- 用户最后一句“其次”尚未完整表达第二个问题；等待其补充。
