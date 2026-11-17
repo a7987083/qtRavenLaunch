@@ -233,7 +233,7 @@ _CN_PAGE_CLASSES = {
     "ichalaunch.ui.pages.home": "HomePage",
     "ichalaunch.ui.pages.client": "ClientPage",
     "ichalaunch.ui.pages.addons": "AddonsPage",
-    "ichalaunch.ui.pages.addons_114": "Addons114Page",
+    "ichalaunch.ui.pages.addons_114": "Raven114AddonsPanel",
 }
 _CN_SAFE_CONTROL_NAMES = frozenset((
     "GradientLabel", "GluePanelButton", "ThemeButton",
@@ -402,6 +402,7 @@ class _CnFinder:
 
 
 _cn_sys.meta_path.insert(0, _CnFinder())
+_cn_log("session-start", "bootstrap", _CN_SOURCE_EXE_SHA256[:12])
 exec(_RAVEN_ORIGINAL_RUN_CODE_)
 '''
 
