@@ -1,5 +1,6 @@
 """Python 3.14 synthetic archive tests for B-mode generator."""
 import marshal
+import types
 from pathlib import Path
 import sys
 import tempfile
@@ -8,7 +9,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from cn_generator_core import (COOKIE, ENTRY, MAGIC, BOOTSTRAP_SOURCE,
-                               read_carchive, decode_script, generate, sha256)
+                               read_carchive, decode_script, generate, sha256, make_bootstrap)
 
 
 def fixture():
@@ -39,6 +40,27 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(script.co_filename, '<raven-cn-bootstrap>')
             original = [c for c in script.co_consts if hasattr(c, 'co_code')]
             self.assertTrue(any('ichalaunch' in c.co_names for c in original))
+
+    def test_self_update_uses_original_source_sha_without_disabling_updater(self):
+        original_source_sha = 'a' * 64
+        code = compile('pass', 'synthetic-run.py', 'exec')
+        bootstrap = marshal.loads(make_bootstrap(code, original_source_sha))
+        ns = {}
+        try:
+            exec(bootstrap, ns)
+            updater = types.SimpleNamespace(_running_launcher_sha256=lambda: 'b' * 64)
+            ns['_cn_patch_loaded']('ichalaunch.core.self_update', updater)
+            self.assertEqual(updater._running_launcher_sha256(), original_source_sha)
+            # Existing official release comparisons are intentionally untouched.
+            self.assertFalse(hasattr(updater, 'update_should_offer'))
+        finally:
+            sys.meta_path[:] = [f for f in sys.meta_path
+                                if not isinstance(f, ns.get('_CnFinder', type(None)))]
+
+    def test_invalid_source_digest_rejected(self):
+        code = compile('pass', 'synthetic-run.py', 'exec')
+        with self.assertRaises(ValueError):
+            make_bootstrap(code, 'invalid-hash')
 
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
