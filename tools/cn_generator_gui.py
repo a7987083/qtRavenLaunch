@@ -11,14 +11,15 @@ from cn_generator_core import generate
 def main():
     app = tk.Tk()
     app.title('RavenLaunch 汉化生成器 · B 版')
-    app.geometry('730x340')
-    app.minsize(650, 320)
+    app.geometry('730x430')
+    app.minsize(650, 390)
     frame = ttk.Frame(app, padding=18)
     frame.pack(fill='both', expand=True)
     ttk.Label(frame, text='将官方启动器生成为独立中文版', font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor='w', pady=(0, 10))
     ttk.Label(frame, text='原版保持不变；新程序由 Qt 自行绘制中文，不创建外部覆盖窗口。').pack(anchor='w')
     src = tk.StringVar()
     dest = tk.StringVar()
+    dictionary = tk.StringVar()
 
     def browse_src():
         p = filedialog.askopenfilename(title='选择 IchaLaunch.exe', filetypes=[('EXE', '*.exe')])
@@ -33,9 +34,16 @@ def main():
         if p:
             dest.set(p)
 
+    def browse_dictionary():
+        p = filedialog.askopenfilename(title='选择自定义中文词库（可选）',
+                                       filetypes=[('JSON', '*.json')])
+        if p:
+            dictionary.set(p)
+
     for label, var, callback, button_name in (
         ('官方 EXE', src, browse_src, '选择'),
         ('输出文件', dest, browse_dst, '保存到'),
+        ('自定义词库（可选）', dictionary, browse_dictionary, '选择'),
     ):
         ttk.Label(frame, text=label).pack(anchor='w', pady=(13, 2))
         line = ttk.Frame(frame)
@@ -67,6 +75,9 @@ def main():
         if not a.is_file() or not str(dest.get()).strip():
             messagebox.showerror('参数不完整', '请选择有效的原版 EXE 和输出路径')
             return
+        if dictionary.get().strip() and not Path(dictionary.get().strip()).is_file():
+            messagebox.showerror('词库不存在', '自定义 JSON 词库路径无效。')
+            return
         if b.exists():
             messagebox.showerror('文件已存在', '为保护已有文件，生成器不会覆盖输出文件。请换一个文件名。')
             return
@@ -75,7 +86,8 @@ def main():
 
         def work():
             try:
-                res = generate(a, b)
+                translation_path = Path(dictionary.get().strip()) if dictionary.get().strip() else None
+                res = generate(a, b, translation_path)
                 app.after(0, finish, res, None)
             except Exception as ex:
                 app.after(0, finish, None, f'{type(ex).__name__}: {ex}')
