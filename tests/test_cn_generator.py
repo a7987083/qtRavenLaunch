@@ -178,6 +178,55 @@ class GeneratorTests(unittest.TestCase):
                 sys.meta_path[:] = [finder for finder in sys.meta_path
                                     if not isinstance(finder, ns.get('_CnFinder', type(None)))]
 
+    def test_invalid_json_escape_reports_exact_location(self):
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "zh_CN.json"
+            # One literal backslash followed by G is not a valid JSON escape.
+            bad = '{"HOME": "C:' + chr(92) + 'Games"}'
+            source.write_text(bad, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "第 1 行，第"):
+                load_translations(source)
+            self.assertEqual(source.read_text(encoding="utf-8"), bad)
+
+    def test_settings_exact_addons_hint_is_safe_static_label(self):
+        original_text = (r"Defaults to Interface\AddOns under the game folder "
+                         "when you set or change the game path. "
+                         "Override only if your addons live elsewhere.")
+        code = compile('pass', 'run.py', 'exec')
+        bootstrap = marshal.loads(make_bootstrap(code, 'a' * 64,
+                                  {original_text: "默认使用游戏目录下的插件文件夹。"}))
+        class QWidget:
+            pass
+        class QLabel(QWidget):
+            def __init__(self, text):
+                self.caption = text
+            def text(self):
+                return self.caption
+            def setText(self, value):
+                self.caption = value
+        class QAbstractButton(QWidget):
+            pass
+        class FakeSettingsPage:
+            def __init__(self):
+                self.hint = QLabel(original_text)
+            def findChildren(self, widget_type):
+                return [self.hint] if isinstance(self.hint, widget_type) else []
+        qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget, widgets.QLabel, widgets.QAbstractButton = QWidget, QLabel, QAbstractButton
+        qt.QtWidgets = widgets
+        ns = {}
+        with patch.dict(sys.modules, {"PySide6": qt, "PySide6.QtWidgets": widgets}):
+            try:
+                exec(bootstrap, ns)
+                ns["_cn_patch_loaded"]("ichalaunch.ui.pages.settings",
+                                       types.SimpleNamespace(SettingsPage=FakeSettingsPage))
+                self.assertEqual(FakeSettingsPage().hint.text(),
+                                 "默认使用游戏目录下的插件文件夹。")
+            finally:
+                sys.meta_path[:] = [finder for finder in sys.meta_path
+                                    if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
