@@ -401,6 +401,78 @@ class GeneratorTests(unittest.TestCase):
                         if not isinstance(finder, ns.get("_CnFinder", type(None)))
                     ]
 
+    def test_client_dynamic_constructor_and_refresh_labels(self):
+        """CLIENT helper/refresh constants are eligible, status values remain untouched."""
+        class QWidget:
+            def __init__(self, value=""):
+                self.value = value
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+            def objectName(self):
+                return getattr(self, "name", "")
+            def toolTip(self):
+                return ""
+            def setToolTip(self, value):
+                self.tooltip = value
+
+        class QLabel(QWidget):
+            pass
+
+        class QAbstractButton(QWidget):
+            pass
+
+        class ClientPage:
+            def __init__(self):
+                self.rows = []
+                self._add_presets_page()
+                self.status = QLabel("Not installed")
+                self.status.name = "client_status"
+                self.rows.append(self.status)
+            def _add_presets_page(self):
+                self.preset = QLabel("Choose a client preset")
+                self.rows.append(self.preset)
+            def findChildren(self, cls):
+                return [row for row in self.rows if isinstance(row, cls)]
+            def refresh_from_settings(self):
+                self.help = QLabel("No pending client mod changes")
+                self.rows.append(self.help)
+
+        translated = {
+            "Choose a client preset": "选择客户端预设",
+            "No pending client mod changes": "没有待应用的客户端更改",
+            "Not installed": "未安装",
+        }
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64, translated))
+        qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget = QWidget
+        widgets.QLabel = QLabel
+        widgets.QAbstractButton = QAbstractButton
+        qt.QtWidgets = widgets
+        ns = {}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict(sys.modules, {"PySide6": qt,
+                                          "PySide6.QtWidgets": widgets}), \
+                 patch.dict("os.environ", {"LOCALAPPDATA": td}):
+                try:
+                    exec(bootstrap, ns)
+                    ns["_cn_patch_loaded"]("ichalaunch.ui.pages.client",
+                                           types.SimpleNamespace(ClientPage=ClientPage))
+                    page = ClientPage()
+                    self.assertEqual(page.preset.text(), "选择客户端预设")
+                    self.assertEqual(page.status.text(), "Not installed")
+                    page.refresh_from_settings()
+                    self.assertEqual(page.help.text(), "没有待应用的客户端更改")
+                    self.assertEqual(page.status.text(), "Not installed")
+                finally:
+                    sys.meta_path[:] = [
+                        finder for finder in sys.meta_path
+                        if not isinstance(finder, ns.get("_CnFinder", type(None)))
+                    ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
