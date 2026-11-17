@@ -1,6 +1,7 @@
 """Python 3.14 synthetic archive tests for B-mode generator."""
 import marshal
 import types
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
@@ -100,6 +101,64 @@ class GeneratorTests(unittest.TestCase):
             src = Path(td) / "simple.json"
             src.write_text('{"HOME":"主页","PLAY":"开始游戏"}', encoding="utf-8")
             self.assertEqual(load_translations(src), {"HOME": "主页", "PLAY": "开始游戏"})
+
+    def test_settings_static_labels_and_refresh_only(self):
+        """Settings text is translated while unrelated state labels remain original."""
+        class QLabel:
+            def __init__(self, value):
+                self.value = value
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+
+        class QAbstractButton(QLabel):
+            pass
+
+        class FakeSettingsPage:
+            def __init__(self):
+                self.title = QLabel("GAME CLIENT")
+                self.action = QAbstractButton("BROWSE...")
+                self.status = QLabel("UPDATE")
+                self.input = object()
+                self.children = [self.title, self.action, self.status, self.input]
+            def findChildren(self, cls):
+                return [w for w in self.children if isinstance(w, cls)]
+            def refresh(self):
+                self.title.setText("GAME LOCATION")
+
+        # A translation map is available, but only approved SETTINGS literals
+        # are eligible for setText mutation; "UPDATE" remains business state.
+        translations = {
+            "GAME CLIENT": "游戏客户端", "GAME LOCATION": "游戏目录",
+            "BROWSE...": "浏览...", "UPDATE": "更新"
+        }
+        bootstrap = marshal.loads(
+            make_bootstrap(compile('pass', 'synthetic-run.py', 'exec'),
+                           'a' * 64, translations))
+        fake_pyside = types.ModuleType("PySide6")
+        fake_widgets = types.ModuleType("PySide6.QtWidgets")
+        fake_widgets.QLabel = QLabel
+        fake_widgets.QAbstractButton = QAbstractButton
+        fake_pyside.QtWidgets = fake_widgets
+        ns = {}
+        with patch.dict(sys.modules, {"PySide6": fake_pyside,
+                                      "PySide6.QtWidgets": fake_widgets}):
+            try:
+                exec(bootstrap, ns)
+                page_module = types.SimpleNamespace(SettingsPage=FakeSettingsPage)
+                ns["_cn_patch_loaded"]("ichalaunch.ui.pages.settings", page_module)
+                page = FakeSettingsPage()
+                self.assertEqual(page.title.text(), "游戏客户端")
+                self.assertEqual(page.action.text(), "浏览...")
+                self.assertEqual(page.status.text(), "UPDATE")
+                page.refresh()
+                self.assertEqual(page.title.text(), "游戏目录")
+                self.assertEqual(page.status.text(), "UPDATE")
+                self.assertTrue(FakeSettingsPage._raven_cn_settings_patched)
+            finally:
+                sys.meta_path[:] = [f for f in sys.meta_path
+                                    if not isinstance(f, ns.get('_CnFinder', type(None)))]
 
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
