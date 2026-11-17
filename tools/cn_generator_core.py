@@ -180,7 +180,7 @@ def _cn_patch_settings_page(module):
     ))
 
     init = page_cls.__init__
-    eligible_settings = _CN_SETTINGS_UI_KEYS | _cn_static_literals(init.__code__)
+    eligible_settings = set(_CN_SETTINGS_UI_KEYS) | _cn_static_literals(init.__code__)
 
     # The Discord/privacy captions are NOT constants in SettingsPage.__init__.
     # They are defined at MODULE scope and passed through named globals.
