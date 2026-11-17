@@ -42,6 +42,100 @@ class GeneratorTests(unittest.TestCase):
             original = [c for c in script.co_consts if hasattr(c, 'co_code')]
             self.assertTrue(any('ichalaunch' in c.co_names for c in original))
 
+    def test_custom_login_runtime_scoped_to_realm_only(self):
+        from dataclasses import dataclass
+        from cn_generator_core import make_bootstrap
+
+        @dataclass
+        class Status:
+            label: str
+            realm_list: str | None
+            patch_list: str | None
+            missing_file: bool = False
+            @property
+            def needs_update(self):
+                return (self.missing_file or self.realm_list != "logon.ravencraft.io"
+                        or self.patch_list != "logon.ravencraft.io")
+
+        with tempfile.TemporaryDirectory() as td:
+            game = Path(td) / "game"
+            (game / "WTF").mkdir(parents=True)
+            realmlist = game / "realmlist.wtf"
+            config = game / "WTF" / "Config.wtf"
+            realmlist.write_bytes(
+                b'SET realmList "logon.ravencraft.io"\r\n'
+                b'SET patchList "logon.ravencraft.io"\r\n')
+            config.write_bytes(
+                b'SET realmList "logon.ravencraft.io"\n'
+                b'SET patchList "preserve-patch.example"\n'
+                b'SET gxWindow "1"\n')
+
+            original_called = []
+            module = types.SimpleNamespace(
+                EXPECTED_HOST="logon.ravencraft.io",
+                RealmlistFileStatus=Status,
+                REALMLIST_NAME="realmlist.wtf",
+                realmlist_wtf_path=lambda root: root / "realmlist.wtf",
+                config_wtf_path=lambda root: root / "WTF" / "Config.wtf",
+                _host_matches=lambda raw: (raw or "").lower() ==
+                                        module.EXPECTED_HOST.lower(),
+                _write_text=lambda path, body: path.write_bytes(body.encode("utf-8")),
+                apply_ravencraft_realm_endpoints=lambda game:
+                    original_called.append(game),
+                realmlist_prompt_is_login_blocking=lambda rows:
+                    rows[0].needs_update,
+            )
+            origin = compile("pass", "synthetic-run.py", "exec")
+            ns = {}
+            try:
+                exec(marshal.loads(make_bootstrap(
+                    origin, "a" * 64, {}, "apac.capycraft.io")), ns)
+                ns["_cn_patch_loaded"]("ichalaunch.game.realmlist_wtf", module)
+                self.assertEqual(module.EXPECTED_HOST, "apac.capycraft.io")
+                rows = [Status("realmlist", "apac.capycraft.io", "logon.ravencraft.io")]
+                self.assertFalse(rows[0].needs_update,
+                                 "Official patchList must not force another overwrite")
+                changed = module.apply_ravencraft_realm_endpoints(game)
+                self.assertEqual(changed, [realmlist, config])
+                self.assertFalse(original_called)
+                self.assertEqual(realmlist.read_bytes(),
+                    b'SET realmList "apac.capycraft.io"\r\n'
+                    b'SET patchList "logon.ravencraft.io"\r\n')
+                self.assertEqual(config.read_bytes(),
+                    b'SET realmList "apac.capycraft.io"\n'
+                    b'SET patchList "preserve-patch.example"\n'
+                    b'SET gxWindow "1"\n')
+                self.assertEqual(module.apply_ravencraft_realm_endpoints(game), [])
+                self.assertIn("apac.capycraft.io", module.format_realmlist_prompt(rows))
+
+                status_module = types.SimpleNamespace(
+                    LOGON_HOST="logon.ravencraft.io", _cached_host="old")
+                ns["_cn_patch_loaded"]("ichalaunch.game.realm_status", status_module)
+                self.assertEqual(status_module.LOGON_HOST, "apac.capycraft.io")
+                self.assertIsNone(status_module._cached_host)
+            finally:
+                sys.meta_path[:] = [finder for finder in sys.meta_path
+                    if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
+    def test_default_mode_does_not_patch_realm_functions(self):
+        from cn_generator_core import make_bootstrap
+        original_apply = lambda game: ["original-used"]
+        module = types.SimpleNamespace(
+            EXPECTED_HOST="logon.ravencraft.io",
+            apply_ravencraft_realm_endpoints=original_apply,
+        )
+        ns = {}
+        try:
+            exec(marshal.loads(make_bootstrap(
+                compile("pass", "synthetic-run.py", "exec"),
+                "a" * 64, {}, "")), ns)
+            ns["_cn_patch_loaded"]("ichalaunch.game.realmlist_wtf", module)
+            self.assertIs(module.apply_ravencraft_realm_endpoints, original_apply)
+            self.assertEqual(module.EXPECTED_HOST, "logon.ravencraft.io")
+        finally:
+            sys.meta_path[:] = [finder for finder in sys.meta_path
+                if not isinstance(finder, ns.get("_CnFinder", type(None)))]
+
     def test_optional_login_server_patches_only_realmlist_in_output(self):
         from cn_generator_core import assemble, REALMLIST_ENTRY
         original_resource = (
