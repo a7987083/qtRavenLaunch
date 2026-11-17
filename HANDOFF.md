@@ -76,3 +76,11 @@ Run isolated generator against the real original executable on a trusted Windows
 - `tests/test_extract_strings.py` 对合成 PYZ/CArchive、嵌套 CodeType/tuple 原文、Unicode 省略号、非 UI URL 过滤、空译文、保留旧翻译、重复导出、失败不破坏旧词库、禁止覆盖执行文件等测试。Windows CI 运行 Python3.14；workflow 已编译脚本并执行 `test_*.py`，PyInstaller 可自动捆绑新增 extractor 模块。
 - 截至此处代码已推送到 main；**还未在用户真实 Windows 上验证从官方 EXE 完整提取及 GUI 按钮/生成/游戏启动**。因为真实原版 EXE 未上传 GitHub CI，工作流只能运行合成归档测试。若真实文件上失败，优先以首次 Python/GUI 错误为准。
 - 用户以前真实 SETTINGS 全英文的回归仍需另行实机确认修复；不要把词库增加等同于扩大 Qt Hook 覆盖。
+
+## 2026-11-17 JSON Invalid \\escape 与 SETTINGS 漏汉化复查
+- 用户真实 Windows 生成失败弹窗 `JSONDecodeError: Invalid \\escape: line 1241 column 25 (char 45435)`。根因类别：用户选中的 `zh_CN.json` **不是合法 JSON**；没有上传具体 JSON 行，不能认定是哪个反斜杠。常见路径 `C:\\Games` 在 JSON 必须写双反斜杠 `C:\\\\Games`。自动静态字符串导出器使用 json.dumps 会转义；本次不擅自损坏旧词库自动纠错。
+- `tools/cn_generator_core.py` 改进 `load_translations`：捕获 json.JSONDecodeError，报告文件、行列、附近原文、可能的反斜杠问题，保留原 JSON / 目标 EXE，其他有效词库逻辑不变。新增合成测试 `test_invalid_json_escape_reports_exact_location`。
+- 另一个用户 SETTINGS 截图包含 `Defaults to Interface\\AddOns under the game folder when you set or change the game path. Override only if your addons live elsewhere.`；此原始字符串已从本地真实 `/mnt/data/_tmp_original.pyz` 的 `ichalaunch.ui.pages.settings.SettingsPage.__init__.co_consts` 读取核对，非渲染猜测。
+- 新增该句及 11 条核实的 SETTINGS 固定英文原文到 `_CN_SETTINGS_UI_KEYS`，对应 `translations/zh_CN.json` 中的中文译文；**依旧只对 SettingsPage 的允许控件 setText**，不全局替换；动态、自绘及输入控件不保证覆盖。
+- `tests/test_cn_generator.py` 新增 fake QWidget 的长提示精确匹配回归测试；GitHub Windows Python3.14 Actions Run `44044418470` completed/success；此次 CI 不证明用户 Windows 实机 SETTING 页面已成功，需用新 EXE 实测。
+- 最新修复在 main；上次 CI 成功到新代码确认后再更新具体 HEAD。用户下次反馈时优先查看 JSON 出错实际行或 Settings 实际运行截图。
