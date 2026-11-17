@@ -748,6 +748,91 @@ class GeneratorTests(unittest.TestCase):
                     if not isinstance(f, runtime.get("_CnFinder", type(None)))
                 ]
 
+    def test_config_editor_labels_only_without_touching_config_values(self):
+        """CVAR/DXVK captions change, key/value/combobox stay unmodified."""
+        class QLabel:
+            def __init__(self, value):
+                self.value = value
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+
+        class FakeCombo:
+            def __init__(self):
+                self.values = [("Off", "off"), ("Auto", "auto")]
+            def currentData(self):
+                return "auto"
+
+        class BaseDialog:
+            def __init__(self):
+                self.label = QLabel("Farclip (terrain distance)")
+                self.group = QLabel("Distance")
+                self.unrelated = QLabel("Unrelated business label")
+                self.combo = FakeCombo()
+                self.slider_value = 777
+                self.labels = [self.label, self.group, self.unrelated]
+            def findChildren(self, cls):
+                return [x for x in self.labels if isinstance(x, cls)]
+
+        class ConfigWtfSettingsDialog(BaseDialog):
+            pass
+
+        class DxvkConfSettingsDialog(BaseDialog):
+            def __init__(self):
+                super().__init__()
+                self.label = QLabel("DXVK frame cap")
+                self.group = QLabel("Presentation")
+                self.labels = [self.label, self.group, self.unrelated]
+
+        config_spec = types.SimpleNamespace(CVAR_SPECS=(
+            types.SimpleNamespace(name="farclip", label="Farclip (terrain distance)",
+                                  group="Distance", hint=""),
+        ))
+        dxvk_spec = types.SimpleNamespace(DXVK_SPECS=(
+            types.SimpleNamespace(name="d3d9.maxFrameRate", label="DXVK frame cap",
+                                  group="Presentation", hint=""),
+        ))
+        fake_qt = types.ModuleType("PySide6")
+        fake_widgets = types.ModuleType("PySide6.QtWidgets")
+        fake_widgets.QLabel = QLabel
+        fake_qt.QtWidgets = fake_widgets
+        code = compile("pass", "synthetic-run.py", "exec")
+        boot = marshal.loads(make_bootstrap(code, "a" * 64, {
+            "Farclip (terrain distance)": "地形视距",
+            "Distance": "距离",
+            "DXVK frame cap": "DXVK 帧率上限",
+            "Presentation": "显示方式",
+            "Unrelated business label": "错误的业务翻译",
+        }))
+        runtime = {}
+        with patch.dict(sys.modules, {
+            "PySide6": fake_qt, "PySide6.QtWidgets": fake_widgets,
+            "ichalaunch.game.config_wtf_edits": config_spec,
+            "ichalaunch.game.dxvk_conf_edits": dxvk_spec,
+        }):
+            try:
+                exec(boot, runtime)
+                runtime["_cn_patch_loaded"]("ichalaunch.ui.widgets.dialogs",
+                    types.SimpleNamespace(ConfigWtfSettingsDialog=ConfigWtfSettingsDialog,
+                                          DxvkConfSettingsDialog=DxvkConfSettingsDialog))
+                config = ConfigWtfSettingsDialog()
+                dxvk = DxvkConfSettingsDialog()
+                self.assertEqual(config.label.text(), "地形视距")
+                self.assertEqual(config.group.text(), "距离")
+                self.assertEqual(dxvk.label.text(), "DXVK 帧率上限")
+                self.assertEqual(dxvk.group.text(), "显示方式")
+                self.assertEqual(config.unrelated.text(), "Unrelated business label")
+                self.assertEqual(config.combo.currentData(), "auto")
+                self.assertEqual(config.slider_value, 777)
+                self.assertEqual(config_spec.CVAR_SPECS[0].name, "farclip")
+                self.assertEqual(dxvk_spec.DXVK_SPECS[0].name, "d3d9.maxFrameRate")
+            finally:
+                sys.meta_path[:] = [
+                    finder for finder in sys.meta_path
+                    if not isinstance(finder, runtime.get("_CnFinder", type(None)))
+                ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
