@@ -6,13 +6,14 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from cn_generator_core import generate
+from extract_strings import export_strings
 
 
 def main():
     app = tk.Tk()
     app.title('RavenLaunch 汉化生成器 · B 版')
-    app.geometry('730x430')
-    app.minsize(650, 390)
+    app.geometry('730x460')
+    app.minsize(650, 420)
     frame = ttk.Frame(app, padding=18)
     frame.pack(fill='both', expand=True)
     ttk.Label(frame, text='将官方启动器生成为独立中文版', font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor='w', pady=(0, 10))
@@ -53,11 +54,16 @@ def main():
 
     status = tk.StringVar(value='请选择原版 IchaLaunch.exe。')
     ttk.Label(frame, textvariable=status, wraplength=660).pack(anchor='w', pady=12)
-    button = ttk.Button(frame, text='生成中文版 EXE')
-    button.pack(anchor='w')
+    actions = ttk.Frame(frame)
+    actions.pack(anchor='w')
+    export_button = ttk.Button(actions, text='导出原始字符串')
+    export_button.pack(side='left', padx=(0, 12))
+    button = ttk.Button(actions, text='生成中文版 EXE')
+    button.pack(side='left')
 
     def finish(result, err):
         button.configure(state='normal')
+        export_button.configure(state='normal')
         if err:
             status.set('生成失败：' + str(err))
             messagebox.showerror('生成失败', str(err))
@@ -93,6 +99,56 @@ def main():
                 app.after(0, finish, None, f'{type(ex).__name__}: {ex}')
         threading.Thread(target=work, daemon=True).start()
 
+    def export_original_strings():
+        original = Path(src.get().strip())
+        if not src.get().strip() or not original.is_file():
+            messagebox.showerror('未选择原版', '请先选择官方 IchaLaunch.exe。')
+            return
+        destination = filedialog.asksaveasfilename(
+            title='导出原始文字到 zh_CN.json',
+            initialdir=str(original.parent),
+            initialfile='zh_CN.json',
+            defaultextension='.json',
+            filetypes=[('JSON', '*.json')])
+        if not destination:
+            return
+        output = Path(destination)
+        if output.exists() and not messagebox.askyesno(
+                '合并翻译',
+                '文件已存在。是否保留现有译文，仅追加新发现的英文？\\n'
+                '导出过程中不会删除原有翻译。'):
+            return
+        button.configure(state='disabled')
+        export_button.configure(state='disabled')
+        status.set('正在静态扫描原版 PYZ，收集真实英文常量（不执行目标 EXE）...')
+
+        def done(summary, error):
+            button.configure(state='normal')
+            export_button.configure(state='normal')
+            if error is not None:
+                status.set('导出失败：' + str(error))
+                messagebox.showerror('导出失败', str(error))
+                return
+            dictionary.set(str(output))
+            status.set('已导出：' + str(output))
+            messagebox.showinfo(
+                '字符串导出完成',
+                f"扫描模块：{summary['ui_modules_examined']}\\n"
+                f"候选词条：{summary['total_entries']}\\n"
+                f"新词条：{summary['new_empty_entries']}\\n\\n"
+                '导出的是真实 Python 字符串候选，不保证全部是界面文字；'
+                '添加中文也不代表该控件已经有翻译适配器。')
+
+        def work():
+            try:
+                summary = export_strings(original, output)
+                app.after(0, done, summary, None)
+            except Exception as exc:
+                app.after(0, done, None, f'{type(exc).__name__}: {exc}')
+
+        threading.Thread(target=work, daemon=True).start()
+
+    export_button.configure(command=export_original_strings)
     button.configure(command=start)
     app.mainloop()
 
