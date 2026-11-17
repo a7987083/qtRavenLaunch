@@ -182,6 +182,19 @@ def _cn_patch_settings_page(module):
     init = page_cls.__init__
     eligible_settings = _CN_SETTINGS_UI_KEYS | _cn_static_literals(init.__code__)
 
+    # The Discord/privacy captions are NOT constants in SettingsPage.__init__.
+    # They are defined at MODULE scope and passed through named globals.
+    # Read precisely those UI caption globals rather than admitting arbitrary
+    # module strings (which also include configuration/internal state keys).
+    for name in ("_DISCORD_PARENT_LABEL", "_DISCORD_CHILD_LABEL"):
+        caption = getattr(module, name, None)
+        if isinstance(caption, str):
+            eligible_settings.add(caption)
+    fields = getattr(module, "BROADCAST_FIELD_LABELS", None)
+    if isinstance(fields, dict):
+        eligible_settings.update(
+            value for value in fields.values() if isinstance(value, str))
+
     def _cn_translate_static(self):
         if getattr(self, "_raven_cn_scanning", False):
             return
@@ -233,7 +246,8 @@ def _cn_patch_settings_page(module):
 
     # Refresh operations recreate/reset some labels. Translate only known
     # static literal values immediately after the original method finishes.
-    for method_name in ("refresh", "_refresh_game_client"):
+    for method_name in ("showEvent", "refresh", "_refresh_game_client",
+                        "_sync_discord_character_row"):
         old_method = getattr(page_cls, method_name, None)
         if old_method is None:
             continue
