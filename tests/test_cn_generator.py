@@ -833,6 +833,124 @@ class GeneratorTests(unittest.TestCase):
                     if not isinstance(finder, runtime.get("_CnFinder", type(None)))
                 ]
 
+    def test_four_known_metal_prompts_translate_only_their_display_labels(self):
+        """Dynamic placeholders preserve folders/counts and dialog decisions."""
+        class QLabel:
+            def __init__(self, value, object_name=""):
+                self.value, self.name = value, object_name
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+            def objectName(self):
+                return self.name
+
+        class MetalFramedDialog:
+            def __init__(self, parent, title, text):
+                self.title = QLabel(title, "ThemedDialogTitle")
+                self.body = QLabel(text, "ThemedDialogBody")
+                self.widgets = [self.title, self.body]
+                self.result_code = 7
+            def findChildren(self, cls):
+                return [label for label in self.widgets if isinstance(label, cls)]
+
+        class ThemedDialog(MetalFramedDialog):
+            pass
+
+        class RecommendedForkSwapDialog(ThemedDialog):
+            def __init__(self):
+                super().__init__(None, "Recommended addon forks",
+                                 "These installed addons have a RavenCraft-recommended fork.")
+                self.addon = QLabel("SHAGUTWEAKS")
+                self.row = QLabel("Installed: ShaguTweaks-dusk\n"
+                                  "Recommended: ShaguTweaks-octowowst")
+                self.widgets += [self.addon, self.row]
+                self.selected_fork = "ShaguTweaks-octowowst"
+
+        mapping = {
+            "Addon folder name mismatch": "插件文件夹名称不匹配",
+            "Recommended addon forks": "推荐插件分支",
+            "GAME UPDATE": "游戏更新",
+            "Reset Client Link": "重置客户端关联",
+            "Folder is {folder} but the .toc is {toc}. WoW requires the folder "
+            "name to match the .toc. Rename folder to {target}?":
+                "文件夹 {folder} 的目录定义为 {toc}。重命名为 {target}？",
+            "{count} published game file(s) do not match this install.":
+                "有 {count} 个游戏文件不匹配。",
+            "PLAY will stay on UPDATE until this finishes.": "完成之前保持更新状态。",
+            "Installed:": "当前安装",
+            "Recommended:": "推荐版本",
+            "Clear the saved WoW folder from launcher settings?": "清除 WoW 目录？",
+            "PLAY will become INSTALL so you can choose a new install "
+            "location. This does not delete any files on disk.":
+                "现在可重新选择目录，磁盘文件不会被删除。",
+            "These installed addons have a RavenCraft-recommended fork.":
+                "这些插件已有推荐分支。",
+            "SHAGUTWEAKS": "不要修改模组名称",
+        }
+        boot = marshal.loads(make_bootstrap(
+            compile("pass", "synthetic-run.py", "exec"), "a" * 64, mapping))
+        qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QLabel = QLabel
+        qt.QtWidgets = widgets
+        runtime = {}
+        with patch.dict(sys.modules, {"PySide6": qt,
+                                      "PySide6.QtWidgets": widgets}):
+            try:
+                exec(boot, runtime)
+                runtime["_cn_patch_loaded"](
+                    "ichalaunch.ui.widgets.metal_framed_dialog",
+                    types.SimpleNamespace(MetalFramedDialog=MetalFramedDialog))
+                runtime["_cn_patch_loaded"](
+                    "ichalaunch.ui.widgets.dialogs",
+                    types.SimpleNamespace(ThemedDialog=ThemedDialog,
+                                          RecommendedForkSwapDialog=RecommendedForkSwapDialog))
+
+                mismatch = ThemedDialog(None, "Addon folder name mismatch",
+                    "Folder is SuperRaidVisual获取技能-saa but the .toc is "
+                    "SuperRaidVisual.toc. WoW requires the folder name to match "
+                    "the .toc. Rename folder to SuperRaidVisual?")
+                self.assertEqual(mismatch.title.text(), "插件文件夹名称不匹配")
+                self.assertIn("SuperRaidVisual获取技能-saa", mismatch.body.text())
+                self.assertIn("SuperRaidVisual.toc", mismatch.body.text())
+                self.assertIn("SuperRaidVisual？", mismatch.body.text())
+                self.assertEqual(mismatch.result_code, 7)
+
+                update = ThemedDialog(None, "GAME UPDATE",
+                    "120 published game file(s) do not match this install.\n\n"
+                    "PLAY will stay on UPDATE until this finishes.")
+                self.assertEqual(update.title.text(), "游戏更新")
+                self.assertIn("有 120 个游戏文件不匹配。", update.body.text())
+                self.assertIn("完成之前保持更新状态。", update.body.text())
+
+                reset = ThemedDialog(None, "Reset Client Link",
+                    "Clear the saved WoW folder from launcher settings?\n\n"
+                    "PLAY will become INSTALL so you can choose a new install "
+                    "location. This does not delete any files on disk.")
+                self.assertEqual(reset.title.text(), "重置客户端关联")
+                self.assertEqual(reset.body.text(),
+                    "清除 WoW 目录？\n\n现在可重新选择目录，磁盘文件不会被删除。")
+
+                forks = RecommendedForkSwapDialog()
+                self.assertEqual(forks.title.text(), "推荐插件分支")
+                self.assertEqual(forks.body.text(), "这些插件已有推荐分支。")
+                self.assertEqual(forks.row.text(),
+                    "当前安装: ShaguTweaks-dusk\n推荐版本: ShaguTweaks-octowowst")
+                self.assertEqual(forks.addon.text(), "SHAGUTWEAKS")
+                self.assertEqual(forks.selected_fork, "ShaguTweaks-octowowst")
+
+                unrelated = ThemedDialog(None, "Delete everything?",
+                                         "File path C:\\Games should not change")
+                self.assertEqual(unrelated.title.text(), "Delete everything?")
+                self.assertEqual(unrelated.body.text(),
+                                 "File path C:\\Games should not change")
+            finally:
+                sys.meta_path[:] = [
+                    finder for finder in sys.meta_path
+                    if not isinstance(finder, runtime.get("_CnFinder", type(None)))
+                ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
