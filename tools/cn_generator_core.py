@@ -1029,6 +1029,8 @@ def validate_login_server(value: str | None) -> str | None:
     import re
     if value is None or not value.strip():
         return None
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ValueError("登录服务器地址包含无效控制字符")
     host = value.strip()
     if len(host) > 253 or any(ord(c) > 127 for c in host):
         raise ValueError("登录服务器仅支持 ASCII 域名或 IPv4 地址")
