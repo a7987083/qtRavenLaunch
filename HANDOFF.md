@@ -106,3 +106,12 @@ Run isolated generator against the real original executable on a trusted Windows
 - `GENERATOR_README.md` 已记录 B2.4.2 调用链和边界。**尚未实机回归**：真实 PySide6 下 QStyledItemDelegate paint 是否匹配主题布局、四个筛选业务是否完整、ClientPage 异步子控件覆盖、游戏更新弹窗，均未在用户 Windows 验证。
 - 重要首个下一任务：真实 Windows 上打开新生成的 IchaLaunch-CN.exe 的 ADDONS 筛选 Installed/Available/Update Available/All 四个选项，检验显示中文但过滤正确；再打开 CLIENT 的 Presets/Launch/Performance/HD Graphics 页面、确认是否增加实际命中。若失败，上传最新 `translation-coverage-summary.json` 和界面截图。
 - GAME UPDATE 弹窗的动态数字拼接仍未进行安全适配；应以目标版真实 Py3.14 字节码定位弹窗构造函数/具体调用点，再做显示层翻译，禁止把全局 QDialog.setText 当作解决方案。
+
+## 2026-11-17 B2.4.3 CLIENT sidebar / presets 实机漏翻译后续修复
+- 用户真实 Windows CLIENT 截图明确仍为英文：侧边 `Presets`、`Launch`、`Performance / Fixes`、`HD Graphics`、`Visual / QoL`、`Advanced`；预设介绍 `Choose a preset to configure client mods automatically. Manual changes switch to Custom — use Apply Changes to install.` 和 `Client only — no preset-managed mods enabled.`；底部状态 `Pending: Install Auto-clear WDB cache`。截图中的主标题、部分按钮、Ultra versions 文字汉化已生效。
+- 上一版用户 `translation-coverage-summary.json` 对照：`Launch` 等已存在非空翻译但 `unobserved`；`Presets` 和完整预设介绍在用户当时词库中缺失（不是 Hook 的证明）。
+- `tools/cn_generator_core.py` `_cn_static_literals` 改为递归 Python CodeType/tuple 字符串常量扫描；`_cn_client_ui_literals` 限制性收集 ClientPage 相关 _add/_build/_create/_refresh/_sync/_update/show 主要 UI 构造函数，同时排除 set_check_status 等状态方法。额外添加 `ichalaunch.ui.widgets.glue_panel_button` 导入目标，尝试对 `GluePanelButton.paintEvent` 的 `text()` 调用使用临时中文；CLIENT 页面扫描跳过对 GluePanelButton 的 setText，以免改变业务路由。Qt paint 路径在真实目标版本**未动态证明**，须实机验证；导入失败诊断现在记录 `adapter-error`。
+- `translations/zh_CN.json` 新增截图文案，词条 67→86，仍是每行 `"English":"中文"` 单层 JSON。使用外部旧词库者必须自己加入相应英文→中文键；生成器不会偷改其翻译。
+- `tests/test_cn_generator.py` 新增模拟递归 UI helper 与 paint-only GluePanelButton 测试；第一处真实 CI 出错为测试代码合成 Python 时把换行误转成 `\\n` 字符，Run 44052350382 SyntaxError，Commit 43ef06ba 修正后 Run 44052492032 success。最新代码额外将导入适配异常记到本机诊断，Windows Python3.14 CI Run `44052582194` completed/success，合成 tests + 构建 EXE + artifact upload 完成。未测试真实 Windows 生成后的客户端屏幕。
+- `Pending: Install Auto-clear WDB cache` 为动态状态；GAME UPDATE 弹窗和 1.14 Cinder 元数据长文仍未实现安全显示层翻译，**不要宣称已修复**。
+- 下一步用户重新生成不同文件名的 EXE，检查侧边中文是否显示且页面导航/勾选仍正常；上传最新 `translation-coverage-summary.json` 或截图检查 `paint-adapter-ready` / `adapter-error`，再精准定位自绘 API。官方更新 SHA 对比修复不可删。
