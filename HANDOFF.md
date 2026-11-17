@@ -179,3 +179,18 @@ Run isolated generator against the real original executable on a trusted Windows
 测试：`tests/test_cn_generator.py` 新增真实 CRLF / LF 双配置、无重复、状态不再因 patchList 不同而反复报错、保留其余 CVar、空默认调用链完全未修改测试。首个失败 CI `44104718335` 发现 CRLF 正则未识别，会导致 realmList 追加而非替换；Commit `0600a7e9403f886185c4150a7f7595c8e56741ef` 后 CI `44104988008` **completed/success**，含 Python3.14 单元测试和 Windows PyInstaller EXE 构建/输出验证。文档 Commit `9013cbb3b07a7c44df7c5fb929e82ec02c7989e7`。
 
 **未验证：** Windows 真实游戏登录成功、是否所有官方启动流程都经过该确认函数、游戏已有目录/游戏退出后配置回写行为。用户应备份现有 realmlist.wtf、WTF/Config.wtf，勿把非 RavenCraft 客户端交给官方更新/修复功能，以免文件被替换。
+
+## 2026-11-17 登录地址功能仍未生效：启动前兜底审计与修复
+
+用户两次实测反馈修改自定义 login host 后仍不生效，不能把以前 CI success 视为 Windows 实机成功。原版目标二进制 `IchaLaunch.exe` SHA-256 为 `e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697`；使用 Python3.13 可解码原版 PYZ 内 `ichalaunch.game.realmlist_wtf`、`ichalaunch.game.realm_status`、`ichalaunch.game.launcher` CodeType 元数据：`realmlist_wtf` 有 `inspect_realm_endpoints`、`realm_endpoints_need_update`、`apply_ravencraft_realm_endpoints`；`launcher.launch_game` 为原版启动游戏函数，引用 `detect_game`、`plan_launch`、`launch_exe`。主窗口 `ichalaunch.ui.main_window` Python3.14 marshal 无法以本地 Python3.13 加载，故目前**尚未证明用户所有真实 PLAY 分支均调用 launcher.launch_game**，不可推断此轮已经实机修好。
+
+本轮增补 `tools/cn_generator_core.py` 的 `_cn_patch_game_launch`，仅当 GUI 生成器填写自定义 login_server（空值仍保持官方原逻辑）时通过 import hook 包装 `ichalaunch.game.launcher.launch_game`，在调用原函数之前：
+1. 用官方 `detect_game()` 定位当前 1.12 游戏根目录；
+2. 检查/补装限定 realmList 的 `ichalaunch.game.realmlist_wtf` 运行时适配器；
+3. 以本轮已实现的自定义 `apply_ravencraft_realm_endpoints(game)` 仅改游戏根 realmlist.wtf、现存 WTF/Config.wtf 的 realmList，保护 patchList 及其它 CVar；
+4. 用原版 `inspect_realm_endpoints(game)` 重新读取并断言每项 `needs_update == False` 才调用原版 `launch_game`。修改失败则明确 RuntimeError、拒绝以错误地址启动，日志仅记录 `login-prelaunch-failed` + 异常类型，不记录用户游戏路径。成功日志 `login-prelaunch-ok` / `login-adapter-ready`。
+5. 空值测试保证未包装原版 launcher 函数。
+
+新增 `tests/test_cn_generator.py` 两个合成测试，验证预写入→调用官方游戏函数的顺序、失败不启动及默认不修改。CI Run `44108850423` completed/success（Python3.14 tests + Windows PyInstaller EXE build + EXE verification）。只说明合成路径通过，不代表 Windows 游戏登录实机验证。
+
+**必须向用户收集的真实诊断：** 用本轮新生成 EXE 点击 PLAY 后，打开 `%LOCALAPPDATA%\RavenLaunch-CN\translation-coverage.jsonl` 搜索 `login-prelaunch-ok` / `login-prelaunch-failed` / `login-adapter-ready`；同时查看生成 EXE 附带 `*.cn-report.json` 中 `login_server_override` 是否确实为 apac.capycraft.io；读取所选游戏目录 `realmlist.wtf` 和 `WTF\Config.wtf` 的实际 realmList（注意隐私，不需上传完整帐号或 Config.wtf）。如果 `login-prelaunch-ok` 不出现，优先证明真实 PLAY 分支是否绕过 `game.launcher.launch_game`，而不是继续猜测和扩大全局 Hook。可能实际使用另一版本客户端（1.14）或另一路启动器函数。不要对 Capycraft 客户端使用原版 RavenCraft 更新/修复功能。
