@@ -156,3 +156,17 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 7. 当前版本不是全界面完整汉化。任何“已命中”仅表示触发过 Python 翻译，不证明最终 Qt 视觉、点击、筛选、下拉都已经实机通过。
 
 实机回归应重点验证：ADDONS 的 Installed/Available/Update Available/All 四个筛选，选择后仍显示正确列表；ClientPage 预设/Launch/Performance 页显示、搜索及按钮行为；启动器更新 SHA 误报仍不复现；报错时提供 `%LOCALAPPDATA%\\RavenLaunch-CN\\translation-coverage.jsonl`。
+
+## CLIENT 实机漏翻译反馈与 B2.4.3 限定修复（2026-11-17）
+
+用户最新两张 Windows 实机截图证明 CLIENT 页面下列项目仍英文：侧边 Presets/Launch/Performance / Fixes/HD Graphics/Visual / QoL/Advanced，预设说明 `Choose a preset to configure client mods automatically. Manual changes switch to Custom — use Apply Changes to install.`、`Client only — no preset-managed mods enabled.`，底部动态 `Pending: Install Auto-clear WDB cache`。部分操作按钮和主标题已经中文，说明旧页面 Hook 并非整体失败。
+
+对照用户此前上传的真实 `translation-coverage-summary.json`：`Presets` 与完整预设说明**不在当时有效词库的已翻译键中**；`Launch`/Performance / Fixes/HD Graphics/Visual / QoL/Advanced/Client only… 等已有译文但未命中。旧 `_cn_static_literals()` 只收集浅层 `co_consts`，且 UI helper 筛选过窄，可能漏掉嵌套 UI 构造方法与 sidebars。
+
+本轮：
+- `tools/cn_generator_core.py` 中 `_cn_static_literals` 改为递归读取 CodeType 和 tuple/frozenset 的字符串常量，`_cn_client_ui_literals` 从 `ClientPage` 中带 `_build_/_add_/_create_/_refresh_/refresh/_sync_/_update_/show` 前缀的 UI 方法收集静态候选，排除已知状态方法 `set_check_status/set_checking/set_updates/clear_pending_update/_sync_status_host/_sync_game_lock_actions`。仍仅检查限定页面与安全控件。
+- 针对 `ichalaunch.ui.widgets.glue_panel_button.GluePanelButton` 增加 import-time `paintEvent` 范围的 `text()` 译文适配，同时 CLIENT 页扫描跳过该类，以避免直接 `setText` 修改左侧导航业务值。这个点目前经过合成 mock 测试，**尚未核实目标真实 GluePanelButton.paintEvent 是否以 self.text() 获取绘制文本**，需实机验证；即使导入 patch 失败也会 fail-open 保留英文并在诊断记 `adapter-error`。
+- 单层 `translations/zh_CN.json` 从 67 扩至 86 条，新增截图真实文案和 Presets/Launch/Performance / Fixes/HD Graphics/Visual / QoL/Advanced 等。**用户选择外部自定义 JSON 时不会自动合并仓库的新增译文**，需要自行合入相应新键；`""` 空译文仍跳过。
+- 新增 Python3.14 合成测试：嵌套 UI 函数常量能收集但状态 setter 常量不应收集；GluePanelButton.paintEvent 临时显示中文，调用前后 `text()` 始终英文。第一处真实 CI 错误：测试样本使用双转义 `\\n` 而非换行，Run `44052350382` 在 `fixture.py` SyntaxError；Commit `43ef06ba` 修复后 Run `44052492032` 成功。
+- **未改动 Pending 动态状态、GAME UPDATE 弹窗或 1.14 外部插件说明的业务文字**。Pending 属于动态字符串，应查清生成位置和读回路径，不能直接全局替换 QLabels；不应把这条描述成已修复。
+- 实机验证：用最新 generator 重新生成新 EXE，确认使用的 JSON 包含相关英文键；打开 CLIENT 页并切换左侧 5+ 分类；检查侧边显示和导航功能，查看 `translation-coverage.jsonl` 的 `paint-adapter-ready` / `adapter-error`。若左侧仍英文，需要继续用真实 Python 3.14 字节码核对 GluePanelButton 的绘制字段，不能猜测其 API。
