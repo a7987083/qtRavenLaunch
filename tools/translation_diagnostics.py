@@ -34,7 +34,7 @@ def summarize(log_path: Path, translations: dict[str, str] | None = None) -> dic
                   if entries[idx]["event"] == "session-start"), 0)
     session = entries[start:]
     applied = sorted({e["source"] for e in session
-                      if e["event"] in ("applied", "tooltip-applied", "paint-applied")})
+                      if e["event"] in ("applied", "tooltip-applied", "paint-applied", "style-applied")})
     ready = sorted({e["page"] for e in session if e["event"] == "adapter-ready"})
     failures = [{"page": e["page"], "error": e["source"]}
                 for e in session if e["event"] in
