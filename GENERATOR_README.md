@@ -142,3 +142,17 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 确认这次更新是否生效的最小步骤：使用最新生成器生成不同文件名的 `IchaLaunch-CN.exe`；打开 HOME、SETTINGS、CLIENT、ADDONS 并观察中文；在生成器点击「查看翻译诊断」，检查适配器 ready 和 applied。保留官方原版 EXE；检查启动器更新提示是否仍正常。
 
 此阶段未获得真实 Windows GUI 对这些新 Hook 的回归证据，仅 Python3.14 合成 Qt 控件测试/Windows CI 构建可用于确认语法和模拟行为。
+
+## B2.4.2 — 绘制期 GlueComboBox 筛选汉化与 CLIENT 动态刷新
+
+结合用户真实 Windows 截图和 `translation-coverage-summary.json`（5 个页面适配器 ready、67 个去重翻译键命中、一个 `TitleLockup` 控件不支持）：
+
+1. **ADDONS 下拉筛选**：原版 `ichalaunch.ui.widgets.glue_combo.GlueComboBox.paintEvent` 从 `currentText()` 取文字并用 QPainter.drawText 绘制；原版 `AddonsPage._apply_filter_mode` 同样读取 `currentText()` 来决定 Installed/Available 过滤。不能直接改 model `DisplayRole`、`setItemText` 或返回中文给业务代码。
+2. 增加 `_cn_patch_glue_combo`，只在 `paintEvent` 作用域内返回中文 `currentText()`；下拉框使用 `QStyledItemDelegate.initStyleOption` 修改绘制选项的 `option.text`，**不修改 Qt Model ItemData、原生 `currentText()`、`itemText()`**。若未来版本的下拉框已有非默认 delegate，安全跳过并写 `combo-delegate-skipped` 诊断，不覆盖别人的 Delegate。
+3. **CLIENT 动态子界面**：原版 3.14 字节码报告 `ClientPage._add_presets_page`、`refresh_from_settings`、`refresh_plan`、`_refresh_patch9_banner` 涉及正文构建/刷新。增加这些受限构造/刷新方法的静态词常量到页面译文候选，并在完成后重新扫描 page scoped QLabel/QAbstractButton/自绘白名单。状态栏/输入框路径、进度对象和必要业务状态仍排除；不承诺所有远端/动态字符串都覆盖。
+4. **1.14 动态列表**：`Raven114AddonsPanel._build_rows`、`refresh_status` 后重新执行 page scoped 扫描，但插件描述可能来自远端 catalog，静态词库不会自动覆盖。
+5. 新增 Python 3.14 模拟 Qt 测试：筛选 `currentText()/itemText()` 均返回原始英文、绘制才中文、下拉 `option.text` 中文、CLIENT 的 helper/刷新静态标签可更新而 `client_status` 保持原值。合成测试不能代替真实 PySide6 Windows GUI 回归。
+6. **GAME UPDATE 弹窗尚未安全适配**：截图确认文字未翻译，但弹窗创建/动态 %d 拼接需要按原版 3.14 具体调用链定位，不能全局拦截 QDialog/QMessageBox 状态文案。下轮优先解析该弹窗。
+7. 当前版本不是全界面完整汉化。任何“已命中”仅表示触发过 Python 翻译，不证明最终 Qt 视觉、点击、筛选、下拉都已经实机通过。
+
+实机回归应重点验证：ADDONS 的 Installed/Available/Update Available/All 四个筛选，选择后仍显示正确列表；ClientPage 预设/Launch/Performance 页显示、搜索及按钮行为；启动器更新 SHA 误报仍不复现；报错时提供 `%LOCALAPPDATA%\\RavenLaunch-CN\\translation-coverage.jsonl`。
