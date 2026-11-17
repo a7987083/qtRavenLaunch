@@ -124,6 +124,145 @@ def _cn_patch_widget(cls, draw_method, translations, reader_name="text"):
     cls._raven_cn_patched = True
 
 
+
+# Four prompt families confirmed in the original 1.6.28 Python archive.
+# Only their display QLabel text may be localized; nothing about dialog
+# return values, checkbox states, folder names or addon identities changes.
+_CN_PROMPT_TITLES = {
+    "addon folder name mismatch": "addon-folder-mismatch",
+    "recommended addon forks": "recommended-forks",
+    "game update": "game-update",
+    "reset client link": "reset-client-link",
+}
+
+
+def _cn_dialog_display_text(source, kind):
+    if not isinstance(source, str):
+        return source
+    exact = _CN_TRANSLATIONS.get(source)
+    if exact:
+        return exact
+
+    import re as _cn_re
+
+    # Named placeholders are substituted directly: never pass user-supplied
+    # folder/repository names through .format() or interpret their contents.
+    if kind == "addon-folder-mismatch":
+        match = _cn_re.fullmatch(
+            r"Folder is (.+?) but the \.toc is (.+?)\. "
+            r"WoW requires the folder name to match the \.toc\. "
+            r"Rename folder to (.+?)\?",
+            source, _cn_re.DOTALL)
+        if match:
+            template = _CN_TRANSLATIONS.get(
+                "Folder is {folder} but the .toc is {toc}. WoW requires the folder name "
+                "to match the .toc. Rename folder to {target}?")
+            if template:
+                return (template.replace("{folder}", match.group(1))
+                        .replace("{toc}", match.group(2))
+                        .replace("{target}", match.group(3)))
+
+    if kind == "game-update":
+        count_prefix = _cn_re.compile(
+            r"^([0-9]+) published game file\(s\) do not match this install\.$")
+        paragraphs = _cn_re.split(r"(\n+)", source)
+        modified = False
+        for i, part in enumerate(paragraphs):
+            match = count_prefix.fullmatch(part)
+            if match:
+                template = _CN_TRANSLATIONS.get(
+                    "{count} published game file(s) do not match this install.")
+                if template:
+                    paragraphs[i] = template.replace("{count}", match.group(1))
+                    modified = True
+            elif _CN_TRANSLATIONS.get(part):
+                paragraphs[i] = _CN_TRANSLATIONS[part]
+                modified = True
+        if modified:
+            return "".join(paragraphs)
+
+    if kind == "recommended-forks":
+        # Rows are display-only; preserve installed/recommended fork names.
+        lines = source.splitlines(keepends=True)
+        changed = False
+        for i, line in enumerate(lines):
+            for prefix in ("Installed: ", "Recommended: ", "\nRecommended: "):
+                if line.startswith(prefix):
+                    translated = _CN_TRANSLATIONS.get(prefix.strip())
+                    if translated:
+                        lines[i] = translated + ": " + line[len(prefix):]
+                        changed = True
+                    break
+        if changed:
+            return "".join(lines)
+    return source
+
+
+def _cn_localize_prompt_labels(dialog):
+    from PySide6.QtWidgets import QLabel
+    try:
+        labels = dialog.findChildren(QLabel)
+        if not labels:
+            return
+        kind = getattr(dialog, "_raven_cn_prompt_kind", None)
+        if not kind:
+            for label in labels:
+                if label.objectName() != "ThemedDialogTitle":
+                    continue
+                kind = _CN_PROMPT_TITLES.get(label.text().strip().casefold())
+                if kind:
+                    dialog._raven_cn_prompt_kind = kind
+                    break
+        if not kind:
+            return
+        for label in labels:
+            original = label.text()
+            if not isinstance(original, str):
+                continue
+            translated = _cn_dialog_display_text(original, kind)
+            if translated != original:
+                label.setText(translated)
+                # Do not log dynamic source text containing game folder names
+                # or third-party addon metadata.
+                _cn_log("dialog-applied", kind, "title" if
+                        label.objectName() == "ThemedDialogTitle" else "body")
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        _cn_log("adapter-error", "prompt", type(exc).__name__)
+
+
+def _cn_patch_metal_prompts(module):
+    cls = getattr(module, "MetalFramedDialog", None)
+    if cls is None or getattr(cls, "_raven_cn_prompts_patched", False):
+        return
+    original_init = cls.__init__
+
+    def init_localized(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        _cn_localize_prompt_labels(self)
+
+    cls.__init__ = init_localized
+    cls._raven_cn_prompts_patched = True
+    _cn_log("adapter-ready", "prompt", "MetalFramedDialog")
+
+
+def _cn_patch_dialog_family(module):
+    # Custom fork rows are appended AFTER MetalFramedDialog initialization.
+    # Run the same scoped QLabel pass once the complete dialog is built.
+    for class_name in ("ThemedDialog", "RecommendedForkSwapDialog"):
+        cls = getattr(module, class_name, None)
+        if cls is None or getattr(cls, "_raven_cn_prompt_wrapper", False):
+            continue
+        original_init = cls.__init__
+
+        def init_localized(self, *args, _init=original_init, **kwargs):
+            _init(self, *args, **kwargs)
+            _cn_localize_prompt_labels(self)
+
+        cls.__init__ = init_localized
+        cls._raven_cn_prompt_wrapper = True
+        _cn_log("adapter-ready", "prompt", class_name)
+
+
 def _cn_patch_config_editors(module):
     """Translate only display-only QLabel captions in the two CVar editors.
 
@@ -596,8 +735,11 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.metal_framed_dialog":
+            _cn_patch_metal_prompts(module)
         elif name == "ichalaunch.ui.widgets.dialogs":
             _cn_patch_config_editors(module)
+            _cn_patch_dialog_family(module)
         elif name == "ichalaunch.ui.widgets.theme_checkbox":
             cls = getattr(module, "ThemeCheckBox", None)
             if cls is not None:
@@ -662,7 +804,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", "ichalaunch.ui.widgets.metal_framed_dialog", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
