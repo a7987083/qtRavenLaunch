@@ -93,5 +93,15 @@
   "Class": "职业",
   "Level": "等级",
   "Zone": "区域",
-  "Show details": "显示详情"
+  "Show details": "显示详情",
+  "Minimize launcher when game starts": "游戏启动时最小化启动器",
+  "Close launcher when game starts": "游戏启动时关闭启动器",
+  "Use RavenLaunch icon on WoW.exe": "将 RavenLaunch 图标用于 WoW.exe",
+  "Pin the game to the 3D V-Cache cores (AMD X3D with two CCDs)": "将游戏绑定到 3D V-Cache 核心（双 CCD AMD X3D）",
+  "Cap DXVK frames a few below the monitor refresh rate": "将 DXVK 帧率上限设为略低于显示器刷新率",
+  "Edit Config.wtf settings": "编辑 Config.wtf 设置",
+  "Edit dxvk.conf settings": "编辑 dxvk.conf 设置",
+  "Encrypt saved login passwords (Nampower)": "加密保存的登录密码（Nampower）",
+  "Enables Nampower's login Encrypt toggle via Windows DPAPI. Changing or clearing the key makes previously encrypted passwords unreadable.": "通过 Windows DPAPI 启用 Nampower 登录密码加密。更换或清除密钥会导致之前加密的密码无法读取。",
+  "Patches WoW.exe (not a DLL). Farclip, grass, nameplates, 4GB LAA, camera skip fix, custom glues, and blue moon on by default. Widescreen FoV, sound, and quickloot are optional — use the cog to configure.": "直接修补 WoW.exe（不是 DLL），默认启用视距、草地、姓名板、4GB 大地址支持、镜头修复、自定义界面和蓝月效果。宽屏视野、声音和快速拾取可通过齿轮选择。"
 }
