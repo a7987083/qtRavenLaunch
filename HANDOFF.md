@@ -169,3 +169,13 @@ Run isolated generator against the real original executable on a trusted Windows
 - `tests/test_cn_generator.py`: 合成 Python3.14 CArchive 新增压缩 realmlist 资源，测试 `apac.capycraft.io` 输出内容与 `patchList`、原版字节保护；空白不修改资源；无效字符串与资源缺失时不生成文件。CI 首个真实错误 Run `44100555218` 因 validator 对 `localhost\r\n` 先 strip 导致放行，Commit `dfde3624` 改为 strip 前拒绝控制字符。随后 Windows GitHub Actions Run `44100758247` completed/success（Python3.14 tests + PyInstaller 打包 + EXE 文件验证）。
 - **重要未验证：** 官方启动器运行时究竟如何写入目标客户端 `realmlist.wtf`，是否有代码覆盖资源或从其它来源获取登录地址，尚未用真实 Windows 动态验证；不能宣称已成功连接 Capycraft。原版官方更新/文件修复可能与 Capycraft 客户端不兼容，用户应避免执行此操作。
 - 保留稳定的静态汉化/原版 SHA 更新误报修复，目标只增加新的输出选项，无旧提交改写。
+
+## 2026-11-17：可选登录服务器运行时链路修复
+
+用户使用上一版可选 realmList 修改后发现“好像没用”，我们复核了原版 `IchaLaunch.exe` 真正的 Python3.14 PYZ CodeType/常量与真实归档资源，不再把“内嵌资源改写成功”误当成“游戏客户端登录生效”。原版 SHA-256 = `e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697`。真实 CArchive 内 `ichalaunch\\data\\realmlist.wtf` 是压缩文件，内容：`SET realmList "logon.ravencraft.io"\r\nSET patchList "logon.ravencraft.io"\r\n`。原版 `ichalaunch.game.realm_status.LOGON_HOST` 固定相同域名；`ichalaunch.game.realmlist_wtf.EXPECTED_HOST` 由其导入，`RealmlistFileStatus.needs_update` 同时检查两项；`apply_ravencraft_realm_endpoints` 在被确认时会写入游戏根 realmlist.wtf 和 WTF/Config.wtf。
+
+已修改 `tools/cn_generator_core.py`：自定义登录地址时在运行时 import hook 修改 realm_status.LOGON_HOST、重置 `_cached_host`，修改 realmlist_wtf.EXPECTED_HOST，限定登录检查只关心 realmList；自定义 `apply_ravencraft_realm_endpoints` 在保留原版路径查询与 `_write_text` 原子写入机制的前提下只更新 realmList、保留 patchList、其他 CVars 及换行符；原版“RavenCraft/两项一起写”的提示文字按自定义地址替换。无自定义地址时这些 import hook 均直接跳过。编译生成器时同时继续定向修改内嵌 realmlist 资源，保留原版 SHA 更新比较补偿。不会覆盖原版 EXE 或已存在目标 EXE。
+
+测试：`tests/test_cn_generator.py` 新增真实 CRLF / LF 双配置、无重复、状态不再因 patchList 不同而反复报错、保留其余 CVar、空默认调用链完全未修改测试。首个失败 CI `44104718335` 发现 CRLF 正则未识别，会导致 realmList 追加而非替换；Commit `0600a7e9403f886185c4150a7f7595c8e56741ef` 后 CI `44104988008` **completed/success**，含 Python3.14 单元测试和 Windows PyInstaller EXE 构建/输出验证。文档 Commit `9013cbb3b07a7c44df7c5fb929e82ec02c7989e7`。
+
+**未验证：** Windows 真实游戏登录成功、是否所有官方启动流程都经过该确认函数、游戏已有目录/游戏退出后配置回写行为。用户应备份现有 realmlist.wtf、WTF/Config.wtf，勿把非 RavenCraft 客户端交给官方更新/修复功能，以免文件被替换。
