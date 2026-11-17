@@ -136,12 +136,36 @@ _CN_PROMPT_TITLES = {
 }
 
 
+# Only source literals confirmed at the target dialog call sites may be
+# replaced as exact labels. Do not accept arbitrary dictionary matches for
+# addon names, installed/recommended repo identifiers or status fields.
+_CN_PROMPT_STATIC = {
+    "addon-folder-mismatch": frozenset(("Addon folder name mismatch",)),
+    "recommended-forks": frozenset((
+        "Recommended addon forks",
+        "These installed addons have a RavenCraft-recommended fork. Switch is selected by default — Apply switches those rows. Keep this fork is remembered for the current recommendation (we ask again only if the catalog pick changes). After a switch, Installed rows get a Revert control.",
+    )),
+    "game-update": frozenset((
+        "GAME UPDATE",
+        "Updating downloads only what changed and restores any game files that no longer match. Your WTF folder, realmlist.wtf, and dlls.txt are left alone.",
+        "PLAY will stay on UPDATE until this finishes.",
+    )),
+    "reset-client-link": frozenset((
+        "Reset Client Link",
+        "Clear the saved WoW folder from launcher settings?\n\nPLAY will become INSTALL so you can choose a new install location. This does not delete any files on disk.",
+        "Clear the saved WoW folder from launcher settings?",
+        "PLAY will become INSTALL so you can choose a new install location. This does not delete any files on disk.",
+    )),
+}
+
+
 def _cn_dialog_display_text(source, kind):
     if not isinstance(source, str):
         return source
-    exact = _CN_TRANSLATIONS.get(source)
-    if exact:
-        return exact
+    if source in _CN_PROMPT_STATIC.get(kind, ()):
+        exact = _CN_TRANSLATIONS.get(source)
+        if exact:
+            return exact
 
     import re as _cn_re
 
@@ -175,7 +199,7 @@ def _cn_dialog_display_text(source, kind):
                 if template:
                     paragraphs[i] = template.replace("{count}", match.group(1))
                     modified = True
-            elif _CN_TRANSLATIONS.get(part):
+            elif part in _CN_PROMPT_STATIC["game-update"] and _CN_TRANSLATIONS.get(part):
                 paragraphs[i] = _CN_TRANSLATIONS[part]
                 modified = True
         if modified:
