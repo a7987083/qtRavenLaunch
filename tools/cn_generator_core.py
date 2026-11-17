@@ -179,6 +179,136 @@ def _cn_patch_settings_page(module):
     page_cls._raven_cn_settings_patched = True
 
 
+
+# Runtime diagnostics deliberately contain only translation keys and adapter
+# metadata, never user input, account data, game paths or arbitrary label text.
+_CN_DIAG_SEEN = set()
+
+
+def _cn_log(kind, page, key=""):
+    tag = (kind, page, key)
+    if tag in _CN_DIAG_SEEN:
+        return
+    _CN_DIAG_SEEN.add(tag)
+    try:
+        import json as _cn_json
+        import os as _cn_os
+        from pathlib import Path as _cn_Path
+        folder = _cn_Path(_cn_os.environ.get("LOCALAPPDATA")
+                          or _cn_os.environ.get("TEMP") or ".") / "RavenLaunch-CN"
+        folder.mkdir(parents=True, exist_ok=True)
+        with (folder / "translation-coverage.jsonl").open("a", encoding="utf-8") as f:
+            f.write(_cn_json.dumps({"event": kind, "page": page, "source": key},
+                                   ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+_CN_PAGE_CLASSES = {
+    "ichalaunch.ui.pages.home": "HomePage",
+    "ichalaunch.ui.pages.client": "ClientPage",
+    "ichalaunch.ui.pages.addons": "AddonsPage",
+    "ichalaunch.ui.pages.addons_114": "Addons114Page",
+}
+_CN_SAFE_CONTROL_NAMES = frozenset((
+    "GradientLabel", "GluePanelButton", "ThemeButton",
+    "ThemeRadioButton", "ThemeCheckBox", "TitleLockup"
+))
+_CN_NEVER_REPLACE = frozenset((
+    "HOME", "ADDONS", "CLIENT", "SETTINGS", "PLAY", "UPDATE", "INSTALL",
+    "READY", "CHECKING", "INSTALLING", "DOWNLOADING"
+))
+
+
+def _cn_static_literals(code):
+    """Read only pre-existing static constants; no disassembly or exec."""
+    result = set()
+    for item in code.co_consts:
+        if isinstance(item, str):
+            result.add(item)
+        elif isinstance(item, (tuple, frozenset)):
+            result.update(x for x in item if isinstance(x, str))
+    return result
+
+
+def _cn_patch_page(module_name, module):
+    from PySide6.QtWidgets import QWidget, QLabel, QAbstractButton
+
+    class_name = _CN_PAGE_CLASSES[module_name]
+    page_cls = getattr(module, class_name, None)
+    if page_cls is None:
+        _cn_log("adapter-missing", module_name, class_name)
+        return
+    if getattr(page_cls, "_raven_cn_page_patched", False):
+        return
+    original_init = page_cls.__init__
+    eligible = _cn_static_literals(original_init.__code__)
+    # Only static strings appearing in the page's own UI constructor, not
+    # arbitrary translated strings collected elsewhere in the PYZ archive.
+    if module_name == "ichalaunch.ui.pages.home":
+        for name in ("refresh", "_fill_whats_new"):
+            method = getattr(page_cls, name, None)
+            if hasattr(method, "__code__"):
+                eligible.update(_cn_static_literals(method.__code__))
+    page_id = module_name.rsplit(".", 1)[-1]
+
+    def translate_visible(self):
+        if getattr(self, "_raven_cn_scanning", False):
+            return
+        self._raven_cn_scanning = True
+        try:
+            for widget in self.findChildren(QWidget):
+                if not (isinstance(widget, (QLabel, QAbstractButton))
+                        or type(widget).__name__ in _CN_SAFE_CONTROL_NAMES):
+                    continue
+                identifier = getattr(widget, "objectName", lambda: "")()
+                if isinstance(identifier, str) and any(
+                        unsafe in identifier.casefold()
+                        for unsafe in ("status", "progress", "loading", "path", "state")):
+                    continue
+                get_text = getattr(widget, "text", None)
+                set_text = getattr(widget, "setText", None)
+                if callable(get_text) and callable(set_text):
+                    original = get_text()
+                    if (isinstance(original, str) and original in eligible
+                            and original not in _CN_NEVER_REPLACE):
+                        translated = _CN_TRANSLATIONS.get(original)
+                        if translated and translated != original:
+                            set_text(translated)
+                            _cn_log("applied", page_id, original)
+                # Tooltips are presentation-only. Keep text() business state
+                # untouched and translate only literal constructor strings.
+                get_tip = getattr(widget, "toolTip", None)
+                set_tip = getattr(widget, "setToolTip", None)
+                if callable(get_tip) and callable(set_tip):
+                    tip = get_tip()
+                    if isinstance(tip, str) and tip in eligible:
+                        translated = _CN_TRANSLATIONS.get(tip)
+                        if translated and translated != tip:
+                            set_tip(translated)
+                            _cn_log("tooltip-applied", page_id, tip)
+        except Exception as exc:
+            _cn_log("adapter-error", page_id, type(exc).__name__)
+        finally:
+            self._raven_cn_scanning = False
+
+    def init_translated(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        translate_visible(self)
+    page_cls.__init__ = init_translated
+
+    for method_name in ("showEvent", "refresh"):
+        previous = getattr(page_cls, method_name, None)
+        if not callable(previous):
+            continue
+        def refresh_translated(self, *args, _original=previous, **kwargs):
+            result = _original(self, *args, **kwargs)
+            translate_visible(self)
+            return result
+        setattr(page_cls, method_name, refresh_translated)
+    page_cls._raven_cn_page_patched = True
+    _cn_log("adapter-ready", page_id)
+
 def _cn_patch_loaded(name, module):
     try:
         if name == "ichalaunch.ui.main_window":
@@ -187,6 +317,8 @@ def _cn_patch_loaded(name, module):
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
         elif name == "ichalaunch.ui.pages.settings":
             _cn_patch_settings_page(module)
+        elif name in _CN_PAGE_CLASSES:
+            _cn_patch_page(name, module)
         elif name == "ichalaunch.core.self_update":
             original_sha = getattr(module, "_running_launcher_sha256", None)
             if not callable(original_sha):
@@ -225,7 +357,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings"))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
