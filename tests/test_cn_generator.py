@@ -9,7 +9,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from cn_generator_core import (COOKIE, ENTRY, MAGIC, BOOTSTRAP_SOURCE,
-                               read_carchive, decode_script, generate, sha256, make_bootstrap)
+                               read_carchive, decode_script, generate, sha256, make_bootstrap, load_translations)
 
 
 def fixture():
@@ -61,6 +61,32 @@ class GeneratorTests(unittest.TestCase):
         code = compile('pass', 'synthetic-run.py', 'exec')
         with self.assertRaises(ValueError):
             make_bootstrap(code, 'invalid-hash')
+
+    def test_external_dictionary_embedded_without_changing_business_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "custom.json"
+            src.write_text('{"schema":1,"nav":{"HOME":"主界面"},"launch":{"PLAY":"启动"}}',
+                           encoding="utf-8")
+            translations = load_translations(src)
+            original = compile('pass', 'synthetic-run.py', 'exec')
+            bootstrap = marshal.loads(make_bootstrap(original, 'a' * 64, translations))
+            ns = {}
+            try:
+                exec(bootstrap, ns)
+                self.assertEqual(ns["_CN_NAV"]["HOME"], "主界面")
+                self.assertEqual(ns["_CN_LAUNCH"]["PLAY"], "启动")
+                self.assertNotIn("SETTINGS", ns["_CN_NAV"])
+                self.assertTrue(callable(ns["_cn_patch_widget"]))
+            finally:
+                sys.meta_path[:] = [finder for finder in sys.meta_path
+                                    if not isinstance(finder, ns.get('_CnFinder', type(None)))]
+
+    def test_translation_dictionary_rejects_invalid_schema(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "bad.json"
+            src.write_text('{"schema":2,"nav":{},"launch":{}}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "schema"):
+                load_translations(src)
 
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
