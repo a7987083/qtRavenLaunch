@@ -795,7 +795,7 @@ def _cn_replace_realm_line(raw, host):
     except UnicodeDecodeError:
         raise ValueError("Cannot safely edit a non-UTF8 game realmlist")
     expr = _cn_re.compile(
-        r'(?im)^([ \t]*SET[ \t]+realmList[ \t]+)(?:"[^"\r\n]*"|[^\s\r\n]+)([^\r\n]*)$')
+        r'(?im)^([ \t]*SET[ \t]+realmList[ \t]+)(?:"[^"\r\n]*"|[^\s\r\n]+)([^\r\n]*)(?=\r?$)')
     matches = list(expr.finditer(text))
     if len(matches) > 1:
         raise ValueError("Duplicate realmList lines; refusing to rewrite")
