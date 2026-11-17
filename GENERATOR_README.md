@@ -198,3 +198,23 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 - 运行时日志新增 `config-label-applied`，`tools/translation_diagnostics.py` 汇总可计入实际适配命中；如果没打开弹窗则该项不应期望出现。
 - **未验证**：真实 Windows 上弹窗视觉中文显示、长说明是否截断、关闭与 Save 是否正常、Config.wtf/dxvk.conf 文件实际写入内容。CI synthetic mock 不能代替实机验证。
 - CLIENT `Vanilla Tweaks V2` 的长说明在用户截图中依旧英文，虽然内置词库已有该原文并限制允许 QLabel 翻译，推断可能是动态创建/不同控件类型，**尚未解决**；应优先定位真实行组件和刷新调用链，不能宣称已修复。
+
+## B2.4.8 — 四类原生确认弹窗的显示层翻译
+
+用户的七张 Windows 截图（其中三类重复）归并为四个真实弹窗：
+1. `Addon folder name mismatch`：文件夹名称与 .toc 的动态确认；
+2. `Recommended addon forks`：推荐分支说明与每条已安装/推荐仓库信息；
+3. `GAME UPDATE`：不匹配的官方游戏文件数量、更新说明与稍后/立即更新；
+4. `Reset Client Link`：清除保存的 WoW 路径的确认。
+
+根据目标 `IchaLaunch.exe` 的 `PYZ.pyz` 真实字节（不以 Python3.13 反汇编 3.14 opcode）：`ichalaunch.ui.widgets.metal_framed_dialog.MetalFramedDialog.__init__(parent,title,text)` 负责建立 `QLabel` 标题 `ThemedDialogTitle` 和正文 `ThemedDialogBody`。在 `ichalaunch.ui.widgets.dialogs` 可核对 `RecommendedForkSwapDialog`、`confirm_addon_toc_renamer` 和对应英文标题/完整说明常量；在 `ichalaunch.ui.main_window` 可核对 `GAME UPDATE`、`Later`、`Update now`、`Reset Client Link` 和正文常量。
+
+`tools/cn_generator_core.py` 新增：
+- `_cn_patch_metal_prompts` 仅对原生 `MetalFramedDialog` 完成初始化后的标题/正文 `QLabel` 做检查；`_cn_patch_dialog_family` 在 `ThemedDialog` / `RecommendedForkSwapDialog` 完整构建后补扫一次，以覆盖推荐分支行。
+- 必须匹配 **四类明确的英文标题**，且只允许对应弹窗已确认的固定正文、标题或格式模板；不依赖全局 QDialog Hook，不翻译任意 QLabel。
+- 动态模板将 `120 published game file(s)...` 中数量、`Folder is ... but the .toc is ... Rename ...` 中的实际文件夹/.toc/目标名称原样插入译文；推荐分支行只翻译 `Installed:`、`Recommended:` 前缀，保留仓库标识。动态原文不写入诊断日志（仅记 title/body 事件类型）。
+- 原有 `GluePanelButton` 的绘制期翻译处理 `Later`、`Update now` 等已有真实按钮文案。DialogResult/Yes/No、回调、文件夹重命名行为、更新业务判断及原版 SHA 修复均未修改。
+- 默认 `translations/zh_CN.json` 继续是用户指定的单层 JSON，增加四类标题、完整静态说明和带 `{count}/{folder}/{toc}/{target}` 参数的模板。
+- `tests/test_cn_generator.py` 增加针对四类弹窗模拟 Qt QLabel 的回归：文件夹/特殊字符不变、计数参数不变、分段 reset 正文可汉化、推荐仓库名称不变、无关标题不受影响。最初几个 CI 失败源于模拟 Reset 两段文案及推荐说明非原版完整字符串，与白名单精确匹配不一致；已改为真实常量及限定分段逻辑，不能为通过测试而放宽业务字符串保护。
+
+此阶段**没有真实 Windows 启动器完整弹窗实机回归**；Python3.14 CI 只证明合成控件行为、打包成功。用户需核对四种弹窗的标题/正文及按钮响应，尤其查看长文本是否被裁切与更新按钮是否仍正确。
