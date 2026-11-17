@@ -160,3 +160,12 @@ Run isolated generator against the real original executable on a trusted Windows
 - 最新模板加固 Commit `64b9e16f`，测试加固 Commit `00803bf9`，最新 Run `44070210169` 待核对。没有 Windows 实机确认四个真实弹窗汉化、按钮响应与布局；**CI success 不等于实机验证**。
 - 旧稳定基线：nav / CatNavButton 中文用户已实机确认；生成器仍只生成新 EXE，不改官方原版；原版 SHA 更新比较修复继续保留。
 - 下一步：下载最新 Windows generator，使用同一官方 IchaLaunch.exe + 已合并新词条的用户词库，逐一重现四类弹窗；特别确认文件数量与目录/仓库名称保留、长中文不裁切、Yes/No/Apply/Update 按钮实际逻辑正常。
+
+## 2026-11-17 新增可选登录服务器地址（realmList）
+- 用户要求汉化生成器增加登录服务器输入框；留空沿用官方默认。背景为用户希望尝试 apac.capycraft.io，而不是将原版登录服 logon.ravencraft.io 强行改掉。
+- 真实官方 EXE `/mnt/data/IchaLaunch.exe`，SHA-256 `e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697`；PyInstaller CArchive 中唯一 `ichalaunch\\data\\realmlist.wtf` 文件，原始压缩数据为 `SET realmList "logon.ravencraft.io"\r\nSET patchList "logon.ravencraft.io"\r\n`。
+- `tools/cn_generator_core.py`: `generate(..., login_server=None)` 调用 `validate_login_server()`，空值不改变该归档条目；指定主机仅在生成版里重封装内置 `realmlist.wtf` 的 `SET realmList`，保留 `patchList` 的完整字节，不改运行期 self_update SHA 补偿和其它资源。缺少唯一条目、格式不符合预期、无效域名/IPv4、换行控制字符、URL/端口等拒绝修改。不覆盖原版/已存在的目标。
+- `tools/cn_generator_gui.py`: 新增「登录服务器地址（可选，留空使用原版）」输入框，并提示只改 realmList。CLI 新增 `--login-server`。
+- `tests/test_cn_generator.py`: 合成 Python3.14 CArchive 新增压缩 realmlist 资源，测试 `apac.capycraft.io` 输出内容与 `patchList`、原版字节保护；空白不修改资源；无效字符串与资源缺失时不生成文件。CI 首个真实错误 Run `44100555218` 因 validator 对 `localhost\r\n` 先 strip 导致放行，Commit `dfde3624` 改为 strip 前拒绝控制字符。随后 Windows GitHub Actions Run `44100758247` completed/success（Python3.14 tests + PyInstaller 打包 + EXE 文件验证）。
+- **重要未验证：** 官方启动器运行时究竟如何写入目标客户端 `realmlist.wtf`，是否有代码覆盖资源或从其它来源获取登录地址，尚未用真实 Windows 动态验证；不能宣称已成功连接 Capycraft。原版官方更新/文件修复可能与 Capycraft 客户端不兼容，用户应避免执行此操作。
+- 保留稳定的静态汉化/原版 SHA 更新误报修复，目标只增加新的输出选项，无旧提交改写。
