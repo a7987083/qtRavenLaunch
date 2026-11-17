@@ -42,6 +42,10 @@ BOOTSTRAP_SOURCE = r'''
 import sys as _cn_sys
 import importlib.util as _cn_util
 
+# Check official-launcher self-updates against the *source* EXE digest.
+# Hashing the localized output would always look like an official hotfix.
+_CN_SOURCE_EXE_SHA256 = "__RAVEN_SOURCE_EXE_SHA256__"
+
 _CN_NAV = {"HOME": "主页", "ADDONS": "插件", "CLIENT": "客户端", "SETTINGS": "设置"}
 _CN_LAUNCH = {"PLAY": "开始游戏", "INSTALL": "安装", "UPDATE": "更新"}
 
@@ -77,6 +81,17 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_NAV)
+        elif name == "ichalaunch.core.self_update":
+            original_sha = getattr(module, "_running_launcher_sha256", None)
+            if not callable(original_sha):
+                raise RuntimeError("self_update._running_launcher_sha256 unavailable")
+            # Do NOT turn off update checks: a newer upstream version (or
+            # a true upstream same-version hotfix) must still be offered.
+            # For comparing a release pin, use the original vendor EXE hash,
+            # because this generated EXE necessarily has a different hash.
+            def _cn_source_launcher_sha256(*args, **kwargs):
+                return _CN_SOURCE_EXE_SHA256
+            module._running_launcher_sha256 = _cn_source_launcher_sha256
         elif name == "ichalaunch.ui.widgets.launch_button":
             cls = getattr(module, "LaunchButton", None)
             if cls is not None:
@@ -104,7 +119,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button"))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update"))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
@@ -181,10 +196,13 @@ def decode_script(entry):
     return code
 
 
-def make_bootstrap(original):
+def make_bootstrap(original, source_sha256):
     # Store the unchanged original run CodeType as an embedded constant.
     # This avoids redistributing its bytecode as a separate file or importing it.
-    source = BOOTSTRAP_SOURCE.replace("exec(_RAVEN_ORIGINAL_RUN_CODE_)",
+    if len(source_sha256) != 64 or any(c not in "0123456789abcdef" for c in source_sha256):
+        raise ValueError("Invalid original-source digest")
+    source = BOOTSTRAP_SOURCE.replace("__RAVEN_SOURCE_EXE_SHA256__", source_sha256)
+    source = source.replace("exec(_RAVEN_ORIGINAL_RUN_CODE_)",
                                       "exec('__RAVEN_ORIGINAL_RUN_CODE__')")
     wrapped = compile(source, "<raven-cn-bootstrap>", "exec")
     constants = list(wrapped.co_consts)
@@ -228,7 +246,7 @@ def generate(source: Path, destination: Path):
     required = {"ichalaunch", "main"}
     if not required.issubset(script_code.co_names):
         raise ValueError("Launcher does not have the expected IchaLaunch Python entry")
-    patched = make_bootstrap(script_code)
+    patched = make_bootstrap(script_code, sha256(original))
     script["blob"] = zlib.compress(patched, level=9) if script["compressed"] else patched
     script["raw_size"] = len(patched)
     result = assemble(original[:start], cookie, entries)
@@ -256,7 +274,8 @@ def generate(source: Path, destination: Path):
             "source_bytes": len(original), "output_bytes": len(result),
             "carchive_entries": len(entries), "modified_entries": changes,
             "original_unchanged": source.read_bytes() == original,
-            "static_verified": True, "windows_gui_tested": False}
+            "static_verified": True, "windows_gui_tested": False,
+            "source_digest_used_for_updater_comparison": True}
 
 
 def main():
