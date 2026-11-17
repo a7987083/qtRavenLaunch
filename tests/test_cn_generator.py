@@ -593,6 +593,56 @@ class GeneratorTests(unittest.TestCase):
                     finder for finder in sys.meta_path
                     if not isinstance(finder, ns.get("_CnFinder", type(None)))]
 
+    def test_cat_nav_theme_option_translation_preserves_native_text(self):
+        """CLIENT CatNavButton QStyleOption uses Chinese, .text() stays English."""
+        class StyleOption:
+            def __init__(self):
+                self.text = ""
+
+        class ThemeButton:
+            def __init__(self, label, object_name):
+                self.caption = label
+                self.name = object_name
+            def objectName(self):
+                return self.name
+            def text(self):
+                return self.caption
+            def initStyleOption(self, option):
+                option.text = self.caption
+            def paintEvent(self, event):
+                before = self.text()
+                option = StyleOption()
+                self.initStyleOption(option)
+                return before, option.text
+
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64,
+            {"Advanced": "高级", "Presets": "预设"}))
+        ns = {}
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict("os.environ", {"LOCALAPPDATA": td}):
+                try:
+                    exec(bootstrap, ns)
+                    ns["_cn_patch_loaded"](
+                        "ichalaunch.ui.widgets.theme_button",
+                        types.SimpleNamespace(ThemeButton=ThemeButton))
+                    nav = ThemeButton("Advanced", "CatNavButton")
+                    other = ThemeButton("Advanced", "OrdinaryThemeButton")
+                    self.assertEqual(nav.text(), "Advanced")
+                    self.assertEqual(nav.paintEvent(None), ("高级", "高级"))
+                    self.assertEqual(nav.text(), "Advanced")
+                    self.assertEqual(other.paintEvent(None), ("Advanced", "Advanced"))
+                    self.assertEqual(other.text(), "Advanced")
+                    report = (Path(td) / "RavenLaunch-CN" /
+                              "translation-coverage.jsonl").read_text(encoding="utf-8")
+                    self.assertIn('"event": "style-applied"', report)
+                    self.assertIn('"source": "Advanced"', report)
+                finally:
+                    sys.meta_path[:] = [
+                        finder for finder in sys.meta_path
+                        if not isinstance(finder, ns.get("_CnFinder", type(None)))
+                    ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
