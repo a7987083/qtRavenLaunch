@@ -34,3 +34,14 @@ Run isolated generator against the real original executable on a trusted Windows
 - `tools/cn_generator_core.py` 修改：为新生成 EXE 的 bootstrap 嵌入输入官方 EXE 的 SHA-256；拦截 `ichalaunch.core.self_update` 导入，仅替代 `_running_launcher_sha256` 的比较结果为**未修改的输入原版 SHA**。保留 `update_should_offer`、远端 pin、下载文件校验、其他更新功能。现有自动更新若执行，会覆盖汉化版，须重新生成。
 - Core commit `6ff78700`；tests `7a1a359c`；README `c3318c3c`。新增 Python3.14 synthetic test，运行成功；GitHub Actions Run `44035628254` completed success，artifact `14307566182`（`RavenLaunch-CN-Generator-Windows`）， ZIP SHA-256 `3e812cb51eb16e71f664528c631191cbdcf05a3746485fb272bac883c45f9b95`。
 - **未验证**：用户 Windows 重新生成版是否不再误报、真实 GUI 更新通知处理、缓存一致性；必须让用户实际重生成并启动检查，不能称已实机回归通过。
+
+## 2026-11-17 B2.1 独立词库 + Glyphshift 采集接口
+- B2.1 基于 `main` HEAD `7f76a4ca` 开始，没有改写历史；Glyphshift 上游官方仓库 `glyphshift/glyphshift` 的 JSON/CSV 词条 schema 已核对：JSON `entries` 数组/根数组；CSV `source,translation`。
+- 新增 `tools/translation_collector.py`：用独立 Python 代码导入 Glyphshift JSON/CSV，输出 `review_required:true` 的候选词条，重复冲突和非法格式拒绝处理；**不会直接覆盖 live 翻译词库**，不能进行全局 Qt setText 替换。新增 `tests/test_translation_collector.py` 共六个测试。
+- 新增 `translations/zh_CN.json`：schema 1，`nav` / `launch` 两组已经验证的自绘按钮翻译；没有添加 SETTINGS 其它未验证控件。
+- `tools/cn_generator_core.py` 新增 `load_translations()`：从独立 JSON 加载，严格 schema、大小和字符串校验，编译进现有 bootstrap 原生 Qt paint Hook；原版保护和 SHA-256 更新误报修复保持不变。CLI 可 `--dictionary <path>`。
+- `tools/cn_generator_gui.py` 新增可选外部词库选择器；未指定时使用 Windows PyInstaller onefile 内置 `zh_CN.json`。
+- `.github/workflows/build-cn-generator.yml` 更新：Python 3.14 执行所有 `test_*.py`，打包时 `--add-data "translations/zh_CN.json;translations"`。
+- `docs/GLYPHSHIFT_RESEARCH.md` 和 `GENERATOR_README.md` 记录已核对的上游实际格式、导入及边界。
+- 尚未对 Glyphshift + IchaLaunch 进行真实 Windows 采集，也未在真实 Windows GUI 回归带词库的新生成器；不得声称此项实机验证通过。
+- 下一阶段 B2.2 才汉化 SETTINGS 普通 QWidget；必须先定位 Qt 显示层和业务文本比较，不允许未经审查把全部 `setText` 翻译。
