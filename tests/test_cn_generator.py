@@ -65,7 +65,7 @@ class GeneratorTests(unittest.TestCase):
     def test_external_dictionary_embedded_without_changing_business_status(self):
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "custom.json"
-            src.write_text('{"schema":1,"nav":{"HOME":"主界面"},"launch":{"PLAY":"启动"}}',
+            src.write_text('{"HOME":"主界面","PLAY":"启动"}',
                            encoding="utf-8")
             translations = load_translations(src)
             original = compile('pass', 'synthetic-run.py', 'exec')
@@ -73,20 +73,33 @@ class GeneratorTests(unittest.TestCase):
             ns = {}
             try:
                 exec(bootstrap, ns)
-                self.assertEqual(ns["_CN_NAV"]["HOME"], "主界面")
-                self.assertEqual(ns["_CN_LAUNCH"]["PLAY"], "启动")
-                self.assertNotIn("SETTINGS", ns["_CN_NAV"])
+                self.assertEqual(ns["_CN_TRANSLATIONS"]["HOME"], "主界面")
+                self.assertEqual(ns["_CN_TRANSLATIONS"]["PLAY"], "启动")
+                self.assertNotIn("SETTINGS", ns["_CN_TRANSLATIONS"])
                 self.assertTrue(callable(ns["_cn_patch_widget"]))
             finally:
                 sys.meta_path[:] = [finder for finder in sys.meta_path
                                     if not isinstance(finder, ns.get('_CnFinder', type(None)))]
 
-    def test_translation_dictionary_rejects_invalid_schema(self):
+    def test_translation_dictionary_rejects_nonflat_structure(self):
         with tempfile.TemporaryDirectory() as td:
             src = Path(td) / "bad.json"
-            src.write_text('{"schema":2,"nav":{},"launch":{}}', encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "schema"):
+            src.write_text('{"HOME":{"value":"主页"}}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Invalid translation"):
                 load_translations(src)
+
+    def test_flat_dictionary_duplicate_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "duplicates.json"
+            src.write_text('{"HOME":"主页","HOME":"首页"}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Duplicate translation key"):
+                load_translations(src)
+
+    def test_flat_dictionary_no_schema_or_sections(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "simple.json"
+            src.write_text('{"HOME":"主页","PLAY":"开始游戏"}', encoding="utf-8")
+            self.assertEqual(load_translations(src), {"HOME": "主页", "PLAY": "开始游戏"})
 
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
