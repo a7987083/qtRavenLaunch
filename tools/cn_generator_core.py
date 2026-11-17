@@ -461,6 +461,7 @@ def _cn_patch_loaded(name, module):
                 _cn_patch_widget(cls, "_paint_label", _CN_TRANSLATIONS)
     except Exception as exc:
         # A localization issue must not prevent users from launching the game.
+        _cn_log("adapter-error", name, type(exc).__name__)
         print("RavenLaunch CN: widget adapter unavailable:", exc, file=_cn_sys.stderr)
 
 
