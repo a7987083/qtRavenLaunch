@@ -186,3 +186,15 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 
 补 `tests/test_cn_generator.py` 模拟自绘 Checkbox/Radio 保持勾选和值，和 CLIENT 说明 QLabel 翻译但跳过状态/模组标识。
 需要用户 Windows 重新生成并打开 Launch/Performance 页面，检查中文截断、复选框可点击、勾选值正确、模组信息清单及无更新误报；本轮未实机验证，不可宣称全部修好。
+
+## B2.4.7 — Config.wtf / dxvk.conf 专用设置弹窗翻译（2026-11-17）
+
+用户 Windows 实机截图确认 `ConfigWtfSettingsDialog` 与 `DxvkConfSettingsDialog` 两个自定义弹窗的标题、说明、各配置项标签仍大量显示英文；此前 CLIENT 左侧分类实机汉化正常。新一轮原版 `PYZ.pyz` 的静态元数据再次核对：真实弹窗类定义于 `ichalaunch.ui.widgets.dialogs`，配置项分别来自 `ichalaunch.game.config_wtf_edits.CVAR_SPECS`、`ichalaunch.game.dxvk_conf_edits.DXVK_SPECS`，Specs 提供展示用途的 `label`、`group`、`hint` 与用于配置写入的 `name` 等字段。
+
+- 新增 `_cn_patch_config_editors` Import Hook：对两种专用弹窗的 `__init__` 做最小后处理，仅扫描其 `QLabel` 子控件，只有内容属于经过批准的固定弹窗介绍/标题或 Spec 的 `label/group/hint` 并存在非空词库翻译时才调用 `setText()`。**不修改** Spec 对象、CVAR/DXVK 配置键、滑块数值、编辑字段、QComboBox 项目或 currentData。
+- 硬性限制：这不是所有配置弹窗全控件汉化。对自绘控件的额外覆盖仍需真实 Windows 验证；只有截图中已确认或 PYZ Spec 确认的英文键才应认为已知。
+- `translations/zh_CN.json` 增加约 46 个 Config.wtf/DXVK label、group、标题及简介译文，仍使用用户指定的单层 `"English":"中文"` 格式。外部自定义 JSON 不会自动获得这些新增条目，必须自行合并或选择未指定自定义词库使用内置字典。
+- `tests/test_cn_generator.py` 增加合成 Qt QLabel/两个配置弹窗测试：期待只翻译展示标签，不修改组合框实际数据、滑块值及 Spec.name。首个真实 CI 错误 Run `44061061730`：原代码把 constructor 所有字符串常量作为候选，导致合成测试里的无关业务 QLabel 被翻译。后续 `75f03512` 将范围严格限制为 Spec 展示字段及四个明确介绍/标题，消除危险的构造函数字符串全量翻译。
+- 运行时日志新增 `config-label-applied`，`tools/translation_diagnostics.py` 汇总可计入实际适配命中；如果没打开弹窗则该项不应期望出现。
+- **未验证**：真实 Windows 上弹窗视觉中文显示、长说明是否截断、关闭与 Save 是否正常、Config.wtf/dxvk.conf 文件实际写入内容。CI synthetic mock 不能代替实机验证。
+- CLIENT `Vanilla Tweaks V2` 的长说明在用户截图中依旧英文，虽然内置词库已有该原文并限制允许 QLabel 翻译，推断可能是动态创建/不同控件类型，**尚未解决**；应优先定位真实行组件和刷新调用链，不能宣称已修复。
