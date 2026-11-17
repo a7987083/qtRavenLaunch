@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "language": "zh_CN",
+  "description": "B2.1 safe custom-painted widget labels; other strings require explicit review",
+  "nav": {
+    "HOME": "主页",
+    "ADDONS": "插件",
+    "CLIENT": "客户端",
+    "SETTINGS": "设置"
+  },
+  "launch": {
+    "PLAY": "开始游戏",
+    "INSTALL": "安装",
+    "UPDATE": "更新"
+  }
+}
