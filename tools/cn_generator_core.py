@@ -81,6 +81,18 @@ _CN_SETTINGS_UI_KEYS = frozenset((
     "Clear Cache",
     "Redo Setup",
     "Check Game Permissions",
+    "Defaults to Interface\\AddOns under the game folder when you set or change the game path. Override only if your addons live elsewhere.",
+    "Download and install the 1.14 client (about 11 GB) into a folder you choose.",
+    "Compare game files to the published RavenCraft client. You can check hashes and restore any that do not match.",
+    "Unlink the saved WoW folder so you can INSTALL to a new location. Does not delete files on disk.",
+    "Prompt to fix addon folder / .toc name mismatches",
+    "Enforce Addon Dependencies",
+    "Prompt when SuperWoW and Nampower settings disagree",
+    "Prompt to switch to recommended addon forks",
+    "Allow Vanilla Tweaks on unrecognized clients (advanced)",
+    "Send crash and error reports to the maintainer",
+    "Reset launcher settings, cached scan data, and saved preferences. Does not delete game or addon files on disk.",
+    "Created by Ichabaddie with significant contributions from Valheru and Mynie. Icon by Subtilizer.",
 ))
 
 
@@ -255,8 +267,23 @@ def load_translations(path: Path | None = None) -> dict[str, str]:
     dictionary = path if path is not None else default_dictionary_path()
     if dictionary.stat().st_size > MAX_DICTIONARY_BYTES:
         raise ValueError("Translation dictionary too large")
-    value = json.loads(dictionary.read_text(encoding="utf-8-sig"),
-                       object_pairs_hook=_unique_json_object)
+    try:
+        value = json.loads(dictionary.read_text(encoding="utf-8-sig"),
+                           object_pairs_hook=_unique_json_object)
+    except json.JSONDecodeError as exc:
+        raw = dictionary.read_text(encoding="utf-8-sig")
+        lines = raw.splitlines()
+        bad_line = lines[exc.lineno - 1] if exc.lineno <= len(lines) else ""
+        # A bounded excerpt only; don't show the user's complete dictionary.
+        left = max(0, exc.colno - 46)
+        right = min(len(bad_line), exc.colno + 34)
+        snippet = bad_line[left:right]
+        message = (f"词库 JSON 格式错误：{dictionary.name}\\n"
+                   f"第 {exc.lineno} 行，第 {exc.colno} 列\\n"
+                   f"{exc.msg}\\n附近内容：{snippet}\\n"
+                   "请检查 Windows 路径中的反斜杠：JSON 必须写成 \\\\，"
+                   "例如 C:\\\\Games。原词库未被修改。")
+        raise ValueError(message) from exc
     if not isinstance(value, dict):
         raise ValueError("Translation dictionary must be a flat JSON object")
     checked = {}
