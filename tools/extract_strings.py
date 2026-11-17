@@ -17,8 +17,8 @@ import os
 import zlib
 
 from cn_generator_core import (
-    MAX_DICTIONARY_BYTES, decode_script, load_translations, read_carchive,
-    require_runtime, sha256, _unique_json_object,
+    MAX_DICTIONARY_BYTES, load_translations, read_carchive,
+    require_runtime, sha256,
 )
 
 MAX_PYZ_BYTES = 128 * 1024 * 1024
@@ -33,13 +33,13 @@ EXTRA_UI_MODULES = frozenset(("ichalaunch.app",))
 RESOURCE = re.compile(r"(?i)\.(png|jpg|jpeg|svg|ico|gif|webp|dll|exe|py|pyc|json|ini|toml|xml|txt|zip|7z|mpq|ttf|woff2?)$")
 IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 HEXLIKE = re.compile(r"^[0-9a-fA-F]{24,}$")
-PLACEHOLDER = re.compile(r"^\\{[^{}]+\\}$")
+PLACEHOLDER = re.compile(r"^\{[^{}]+\}$")
 
 
 def likely_ui_literal(value: str) -> bool:
     if not 2 <= len(value) <= 512 or value != value.strip():
         return False
-    if any(ord(c) < 32 for c in value) or "\\x00" in value:
+    if any(ord(c) < 32 for c in value) or "\x00" in value:
         return False
     if not re.search("[A-Za-z]", value):
         return False
@@ -83,7 +83,7 @@ def read_ui_constants(source: Path) -> tuple[dict[str, set[str]], dict]:
     archive = archives[0]["blob"]
     if archives[0]["compressed"]:
         archive = zlib.decompress(archive)
-    if len(archive) > MAX_PYZ_BYTES or archive[:4] != b"PYZ\\x00":
+    if len(archive) > MAX_PYZ_BYTES or archive[:4] != b"PYZ\x00":
         raise ValueError("Invalid or oversized PYZ archive")
     toc_offset = int.from_bytes(archive[8:12], "big")
     if toc_offset < 12 or toc_offset >= len(archive):
@@ -163,13 +163,13 @@ def export_strings(source: Path, output: Path, *, merge: bool = True) -> dict:
         if phrase not in result:
             result[phrase] = ""
             new_items += 1
-    serialized = json.dumps(result, ensure_ascii=False, indent=2) + "\\n"
+    serialized = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if len(serialized.encode("utf-8")) > MAX_DICTIONARY_BYTES:
         raise ValueError("Export would exceed generator dictionary size limit")
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".cn-export-", dir=output.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\\n") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(serialized)
             f.flush()
             os.fsync(f.fileno())
