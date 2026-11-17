@@ -7,6 +7,9 @@ on:
       - 'tools/cn_generator_core.py'
       - 'tools/cn_generator_gui.py'
       - 'tests/test_cn_generator.py'
+      - 'tests/test_translation_collector.py'
+      - 'tools/translation_collector.py'
+      - 'translations/zh_CN.json'
       - '.github/workflows/build-cn-generator.yml'
 
 permissions:
@@ -25,10 +28,10 @@ jobs:
       - name: Syntax and generator tests
         shell: pwsh
         run: |
-          python -m compileall -q tools/cn_generator_core.py tools/cn_generator_gui.py tests/test_cn_generator.py
-          python -m unittest discover -s tests -p 'test_cn_generator.py' -v
+          python -m compileall -q tools/cn_generator_core.py tools/cn_generator_gui.py tools/translation_collector.py tests/test_cn_generator.py tests/test_translation_collector.py
+          python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build standalone generator
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name RavenLaunch-CN-Generator tools/cn_generator_gui.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --add-data "translations/zh_CN.json;translations" --name RavenLaunch-CN-Generator tools/cn_generator_gui.py
       - name: Verify built EXE
         shell: pwsh
         run: |
