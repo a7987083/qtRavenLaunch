@@ -951,6 +951,39 @@ class GeneratorTests(unittest.TestCase):
                     if not isinstance(finder, runtime.get("_CnFinder", type(None)))
                 ]
 
+    def test_prompt_placeholder_substitution_preserves_literal_brace_names(self):
+        """No recursive substitution; an invalid user template leaves English."""
+        source = (
+            "Folder is Super{toc}Raid-saa but the .toc is SuperRaid.toc. "
+            "WoW requires the folder name to match the .toc. "
+            "Rename folder to SuperRaid?"
+        )
+        template_key = (
+            "Folder is {folder} but the .toc is {toc}. WoW requires the "
+            "folder name to match the .toc. Rename folder to {target}?"
+        )
+        translation = "当前目录 {folder}，定义文件 {toc}，目标 {target}？"
+        boot = marshal.loads(make_bootstrap(
+            compile("pass", "synthetic-run.py", "exec"), "a" * 64,
+            {template_key: translation}))
+        ns = {}
+        try:
+            exec(boot, ns)
+            actual = ns["_cn_dialog_display_text"](source, "addon-folder-mismatch")
+            self.assertIn("Super{toc}Raid-saa", actual)
+            self.assertIn("SuperRaid.toc", actual)
+            self.assertIn("SuperRaid？", actual)
+            # Reject a malformed template which would silently drop a
+            # folder name or the target rename path.
+            ns["_CN_TRANSLATIONS"][template_key] = "将 {folder} 重命名？"
+            self.assertEqual(ns["_cn_dialog_display_text"](
+                source, "addon-folder-mismatch"), source)
+        finally:
+            sys.meta_path[:] = [
+                finder for finder in sys.meta_path
+                if not isinstance(finder, ns.get("_CnFinder", type(None)))
+            ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
