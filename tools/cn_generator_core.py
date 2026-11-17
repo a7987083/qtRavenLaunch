@@ -351,6 +351,14 @@ _CN_NEVER_REPLACE = frozenset((
     "READY", "CHECKING", "INSTALLING", "DOWNLOADING"
 ))
 
+# Verified, descriptive CLIENT labels may originate from the mod catalog
+# instead of ClientPage's constructor. Restrict this fallback to known
+# non-state phrases; never translate row status, mod identifiers or versions.
+_CN_CLIENT_DETAIL_KEYS = frozenset((
+    "Patches WoW.exe (not a DLL). Farclip, grass, nameplates, 4GB LAA, camera skip fix, custom glues, and blue moon on by default. Widescreen FoV, sound, and quickloot are optional — use the cog to configure.",
+    "Enables Nampower's login Encrypt toggle via Windows DPAPI. Changing or clearing the key makes previously encrypted passwords unreadable.",
+))
+
 
 def _cn_static_literals(code):
     """Collect static strings, including nested UI construction closures.
@@ -443,8 +451,15 @@ def _cn_patch_page(module_name, module):
                     _cn_log("unsupported-control", page_id, type(widget).__name__)
                 if callable(get_text) and callable(set_text):
                     original = get_text()
-                    if (isinstance(original, str) and original in eligible
-                            and original not in _CN_NEVER_REPLACE):
+                    display_source = (
+                        isinstance(original, str)
+                        and (original in eligible or (
+                            module_name == "ichalaunch.ui.pages.client"
+                            and isinstance(widget, QLabel)
+                            and original in _CN_CLIENT_DETAIL_KEYS
+                        ))
+                    )
+                    if display_source and original not in _CN_NEVER_REPLACE:
                         translated = _CN_TRANSLATIONS.get(original)
                         if translated and translated != original:
                             set_text(translated)
