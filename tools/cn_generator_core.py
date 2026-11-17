@@ -21,6 +21,7 @@ COOKIE = struct.Struct("!8sIIII64s")
 ENTRY = struct.Struct("!IIIIBc")
 MAX_SIZE = 512 * 1024 * 1024
 MAX_SCRIPT = 8 * 1024 * 1024
+MAX_DICTIONARY_BYTES = 256 * 1024
 
 # Patch only the display value inside Python custom paint routines; the
 # underlying QWidget.text() remains English for game state and routing.
@@ -46,8 +47,8 @@ import importlib.util as _cn_util
 # Hashing the localized output would always look like an official hotfix.
 _CN_SOURCE_EXE_SHA256 = "__RAVEN_SOURCE_EXE_SHA256__"
 
-_CN_NAV = {"HOME": "主页", "ADDONS": "插件", "CLIENT": "客户端", "SETTINGS": "设置"}
-_CN_LAUNCH = {"PLAY": "开始游戏", "INSTALL": "安装", "UPDATE": "更新"}
+_CN_NAV = __RAVEN_CN_NAV_DICTIONARY__
+_CN_LAUNCH = __RAVEN_CN_LAUNCH_DICTIONARY__
 
 
 def _cn_patch_widget(cls, draw_method, translations):
@@ -141,6 +142,35 @@ exec(_RAVEN_ORIGINAL_RUN_CODE_)
 '''
 
 
+def default_dictionary_path() -> Path:
+    # PyInstaller --onefile extracts bundled data to _MEIPASS.
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    return root / "translations" / "zh_CN.json"
+
+
+def load_translations(path: Path | None = None) -> dict[str, dict[str, str]]:
+    dictionary = path if path is not None else default_dictionary_path()
+    if dictionary.stat().st_size > MAX_DICTIONARY_BYTES:
+        raise ValueError("Translation dictionary too large")
+    value = json.loads(dictionary.read_text(encoding="utf-8-sig"))
+    if not isinstance(value, dict) or value.get("schema") != 1:
+        raise ValueError("Unsupported translation dictionary schema")
+    result = {}
+    for section in ("nav", "launch"):
+        mapping = value.get(section)
+        if not isinstance(mapping, dict):
+            raise ValueError(f"Missing dictionary section: {section}")
+        checked = {}
+        for source, translated in mapping.items():
+            if not isinstance(source, str) or not source or len(source) > 512:
+                raise ValueError(f"Invalid source label in {section}")
+            if not isinstance(translated, str) or not translated.strip() or len(translated) > 512:
+                raise ValueError(f"Invalid translation in {section}: {source!r}")
+            checked[source] = translated
+        result[section] = checked
+    return result
+
+
 def require_runtime():
     if sys.version_info[:2] != (3, 14):
         raise RuntimeError(f"Generator needs CPython 3.14; got {sys.version.split()[0]}")
@@ -196,12 +226,19 @@ def decode_script(entry):
     return code
 
 
-def make_bootstrap(original, source_sha256):
+def make_bootstrap(original, source_sha256, translations=None):
     # Store the unchanged original run CodeType as an embedded constant.
     # This avoids redistributing its bytecode as a separate file or importing it.
     if len(source_sha256) != 64 or any(c not in "0123456789abcdef" for c in source_sha256):
         raise ValueError("Invalid original-source digest")
+    if translations is None:
+        translations = load_translations()
     source = BOOTSTRAP_SOURCE.replace("__RAVEN_SOURCE_EXE_SHA256__", source_sha256)
+    for name, section in (("__RAVEN_CN_NAV_DICTIONARY__", "nav"),
+                          ("__RAVEN_CN_LAUNCH_DICTIONARY__", "launch")):
+        if source.count(name) != 1:
+            raise ValueError(f"Missing bootstrap dictionary marker: {name}")
+        source = source.replace(name, repr(translations[section]))
     source = source.replace("exec(_RAVEN_ORIGINAL_RUN_CODE_)",
                                       "exec('__RAVEN_ORIGINAL_RUN_CODE__')")
     wrapped = compile(source, "<raven-cn-bootstrap>", "exec")
@@ -230,7 +267,7 @@ def assemble(prefix, cookie, entries):
     return prefix + payload + toc + footer
 
 
-def generate(source: Path, destination: Path):
+def generate(source: Path, destination: Path, dictionary_path: Path | None = None):
     require_runtime()
     if source.resolve() == destination.resolve():
         raise ValueError("Output must not overwrite the official EXE")
@@ -246,7 +283,7 @@ def generate(source: Path, destination: Path):
     required = {"ichalaunch", "main"}
     if not required.issubset(script_code.co_names):
         raise ValueError("Launcher does not have the expected IchaLaunch Python entry")
-    patched = make_bootstrap(script_code, sha256(original))
+    patched = make_bootstrap(script_code, sha256(original), load_translations(dictionary_path))
     script["blob"] = zlib.compress(patched, level=9) if script["compressed"] else patched
     script["raw_size"] = len(patched)
     result = assemble(original[:start], cookie, entries)
@@ -283,8 +320,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
     p.add_argument("--out", type=Path, default=Path("IchaLaunch-CN.exe"))
+    p.add_argument("--dictionary", type=Path, help="Optional custom zh_CN.json")
     args = p.parse_args()
-    print(json.dumps(generate(args.source, args.out), ensure_ascii=False, indent=2))
+    print(json.dumps(generate(args.source, args.out, args.dictionary), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
