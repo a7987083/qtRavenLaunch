@@ -150,7 +150,14 @@ def _cn_patch_config_editors(module):
         try:
             spec_mod = _cn_importlib.import_module(spec_module)
             specs = getattr(spec_mod, spec_attr, ())
-            eligible = _cn_static_literals(cls.__init__.__code__)
+            eligible = {
+                # Explicit dialog-only presentation captions, never arbitrary
+                # strings appearing in the dialog constructor.
+                "CONFIG.WTF SETTINGS",
+                "DXVK.CONF SETTINGS",
+                "These CVars are written to WTF/Config.wtf on Save and again at Play while the Launch checkbox stays on. Enabling the editor copies the current file into WTF/Backup first. Close the game before writing — WoW rewrites Config.wtf when it exits.",
+                "These keys are written to dxvk.conf on Save and again at Play while the Launch checkbox stays on. Enabling the editor copies the current file into .ravenlaunch/dxvk-backup first. Close the game before writing — DXVK reads the file at startup.",
+            }
             for spec in specs:
                 for key in ("label", "group", "hint"):
                     value = getattr(spec, key, None)
