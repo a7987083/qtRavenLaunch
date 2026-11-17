@@ -39,20 +39,25 @@ The generator now embeds the **selected original EXE SHA-256** in the generated 
 
 Static and synthetic CI testing is not evidence that the real Windows launcher update check or its cache handling has been verified. Test on the original and new generated executable, ideally after normal cache refresh.
 
-## B2.1 — 独立词库与 Glyphshift 导入（2026-11-17）
+## 词库格式（简化版）
 
-已添加 `translations/zh_CN.json`，包含被隔离的 `nav` / `launch` 两组安全自绘汉化词条。生成器把它编译进新的 EXE 启动脚本；既有 `status_lbl.text()` 业务判断和已修复的官方更新 SHA 比较逻辑不变。Windows 单文件生成器构建时经 PyInstaller `--add-data` 内置该 JSON。修改 JSON 后，需要**重新构建生成器**，或开发者用 `--dictionary` 指定磁盘上的新词库：
+`translations/zh_CN.json` 现在是单层英文→中文映射，不使用 `schema`、`nav` 或 `launch` 分类；每行一组：
 
-```powershell
-py tools/cn_generator_core.py IchaLaunch.exe --out IchaLaunch-CN.exe --dictionary translations/zh_CN.json
+```json
+{
+  "HOME": "主页",
+  "ADDONS": "插件",
+  "CLIENT": "客户端",
+  "SETTINGS": "设置",
+  "PLAY": "开始游戏",
+  "INSTALL": "安装",
+  "UPDATE": "更新"
+}
 ```
 
-Glyphshift 作为可选外部工具，不捆绑、不运行在生成的 EXE 中。它可以导出 JSON 或 CSV；导入候选项：
+生成器 GUI 的「自定义词库（可选）」可以直接选择此格式的 UTF-8 JSON。CLI 用 `--dictionary translations/zh_CN.json` 指定文件。未选时使用打包进生成器的内置词库；更新外部 JSON 无需重新编译生成器。
 
-```powershell
-py tools/translation_collector.py glyphshift-export.json --out translations/glyphshift-candidates.json
-```
+**边界：** 词库只提供英文/中文对应关系；当前 Hook 仍只在 `NavTabButton.paintEvent` 和 `LaunchButton._paint_label` 的绘制过程中读取翻译。不代表添加 SETTINGS 页面普通标签即可自动替换，也不会全局拦截 `QWidget.setText` 或改动业务状态。重复键、空值、嵌套对象等不合法输入会被拒绝。
 
-候选文件 `review_required=true`，只供人工校对，**不会被自动插入生成器运行时或全局替换 Qt 文本**。请参阅 `docs/GLYPHSHIFT_RESEARCH.md`。
+Glyphshift 的 JSON / CSV 原文可由 `tools/translation_collector.py` 导出到审核候选列表，审核后将英文/中文键值复制进这个简单词库；导入器不自动写入正式词库。详情见 `docs/GLYPHSHIFT_RESEARCH.md`。
 
-限制：目前仅加载 `nav` / `launch` 已知自绘路径；SETTINGS 页面普通 QLabel/QPushButton 全面翻译是 B2.2，未完成。尚无真实 Glyphshift + IchaLaunch 采集验证；单元测试和 Windows 构建不能替代真实 GUI 回归。
