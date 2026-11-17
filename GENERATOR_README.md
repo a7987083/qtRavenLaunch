@@ -228,3 +228,19 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 填写地址时，只改生成版 EXE 中该归档条目的 SET realmList，例如 apac.capycraft.io；**不改 patchList**，不更换客户端资源、游戏文件、更新地址、签名文件或其它 DLL。原版 EXE 不变，原版 SHA 更新比较修复保留。重封装器 assemble() 更新归档偏移，输出回读检查 realmList，原子写入文件。缺少唯一资源、格式异常、输入无效时拒绝输出。
 
 **重要限制：** 修改内置资源还不能证明原版启动器运行时会把该配置写入已安装的客户端，也不证明目标服务器兼容。RavenCraft 的更新/文件校验仍可能覆盖不兼容客户端，避免对 Capycraft 游戏目录使用其更新或修复。Windows CI 仅验证合成归档的资源替换、CRLF 保留、空值完全保留、非法参数拒绝、原版源文件不变和 patchList 不变。真实 Windows 运行及登录未验证。
+
+## 2026-11-17：登录地址运行时修复（修复仅修改内嵌资源无效的问题）
+
+根因（依据官方 IchaLaunch.exe SHA-256 e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697 的真实 PYZ 中可检查 CodeType 元数据）：`ichalaunch.game.realm_status.LOGON_HOST` 原版固定为 logon.ravencraft.io；`ichalaunch.game.realmlist_wtf.EXPECTED_HOST` 从它导入，`RealmlistFileStatus.needs_update` 同时比较 realmList 与 patchList，`apply_ravencraft_realm_endpoints` 会写入游戏根目录 realmlist.wtf 和（若存在）WTF/Config.wtf 的两项 CVars。先前仅在生成版内置资源中替换 realmList，未适配启动时真实客户端检查/写入链，故用户实测不生效。
+
+这次在自定义登录地址模式下额外注入导入时适配器：
+- `ichalaunch.game.realm_status` 的 `LOGON_HOST` 使用自定义域名，并清空旧缓存；
+- `ichalaunch.game.realmlist_wtf` 的 `EXPECTED_HOST` 采用自定义域名；`RealmlistFileStatus.needs_update` 只判断 realmList，忽略有意不变的 patchList，避免每次启动重复提示；
+- 替换原先同时修改 realmList + patchList 的修复函数 `apply_ravencraft_realm_endpoints`，只按原版选取的游戏根目录 realmlist.wtf 与已存在的 WTF/Config.wtf 路径，以原版 `_write_text` 原子写文件，仅修改 realmList。保留原来的 CRLF/LF、patchList、其他 CVars；重复 realmList 或非 UTF8 拒绝修改；写入之前先检查两个文件；
+- 自定义模式的登录地址修复提示改为与当前目标域名一致的内容，不再误称 RavenCraft/同时修改 patchList；
+- 选项留空时导入适配器完全不改原版函数、属性及提示，沿用官方逻辑；
+- 无论选择何种模式，生成器仍不直接启动官方 EXE，原版 EXE 保持不变，更新检查与 SHA 补偿保持独立。
+
+测试新增 `test_custom_login_runtime_scoped_to_realm_only`、`test_default_mode_does_not_patch_realm_functions`。首次新增测试 CI Run 44104718335 的真实失败为 CRLF 行尾未被正则识别，导致第二条 realmList 追加而非替换；Commit 0600a7e9 修改为识别可选 CR，避免产生重复值。后续 CI 必须核对实际运行状态。真实 Windows 登录和安装路径尚未实机验证。
+
+重要限制：启动器仍面向 RavenCraft，更新/修复可能与其他服务端客户端不兼容；用户测试前备份游戏目录配置并避免对非 RavenCraft 客户端执行更新/文件修复。
