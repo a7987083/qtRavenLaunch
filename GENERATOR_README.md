@@ -73,3 +73,15 @@ Glyphshift 的 JSON / CSV 原文可由 `tools/translation_collector.py` 导出�
 - 为了防止使用者在 JSON 中添加业务状态词后发生错误，SETTINGS 应用位置仍受独立的静态白名单约束；添加新词条不保证即刻生效。
 - `SETTINGS` 标题若不属于 SettingsPage 的 QLabel，需要后续按真实 Qt 对象结构适配。
 - 当前 SETTINGS 的人工翻译是否全部匹配真实 Qt `.text()`、布局是否截断以及所有按钮能否正常响应，**等待用户 Windows 实机回归**。CI 仅用合成 QWidget 测试自定义适配器。
+
+## B2.2 首次实机反馈后的修复：实际 Qt 字符串与自定义控件
+
+用户 Windows 运行 B2.2 的截图证实：导航按钮仍为中文，但 SETTINGS 页面几乎完全保持英文，包括 `GAME CLIENT`、`BROWSE...`、`VERIFY`、`SAVE`。这是**实际 GUI 回归失败**，不得将先前 CI 成功理解为页面汉化成功。
+
+已直接从相同官方 SHA 的 `IchaLaunch.exe` → PyInstaller PYZ → `ichalaunch.ui.pages.settings` 的 `SettingsPage.__init__` CodeType 常量核实实际英文键：
+- `Settings`、`Game client`、`Game location`、`AddOns folder`、`Browse…`、`Install…`、`Verify`、`Reset Client Link`、`Save` 等是**源码原文**；截图中许多大写字母是渲染效果，而不是输入到 Qt 的实际 `.text()`。
+- 1.12 / 1.14 选项等字符串内部有双空格，省略号使用 Unicode U+2026；旧 JSON 中全大写、ASCII `...`、单空格无法匹配。
+- 设置页导入 `GradientLabel`、`GluePanelButton`、`ThemeRadioButton`、`ThemeCheckBox`；先前扫描范围仅 QLabel/QAbstractButton，会遗漏自定义 QWidget 实现。
+- 已更换 `_CN_SETTINGS_UI_KEYS` 为来自原始 CodeType 的精确原文，扩展为设置页内 QWidget 子控件遍历，但**只允许标准 QLabel/QAbstractButton 或四种上述白名单自绘类**、只允许列入 SETTINGS 静态文本白名单的键；明确拒绝输入框和业务状态文本，不使用全局 setText Hook。
+- 单层 `translations/zh_CN.json` 保持 `"英文": "中文"` 格式，按原始常量修正了键，新增 Save、维护/更新等静态词条；本次补充的 Python 3.14 合成 GUI 控件测试覆盖大小写、自绘按钮、输入框排除、refresh 后翻译。
+- **仍未 Windows 实机回归验证新版 SETTINGS 截图**。如仍显示英文，需先确认运行中的新版 EXE 对应新版生成器，接着查找实际类 API 是否缺少 `text()/setText()`，再考虑局部类适配，不能盲目添加词条。
