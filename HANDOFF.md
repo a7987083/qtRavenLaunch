@@ -84,3 +84,15 @@ Run isolated generator against the real original executable on a trusted Windows
 - 新增该句及 11 条核实的 SETTINGS 固定英文原文到 `_CN_SETTINGS_UI_KEYS`，对应 `translations/zh_CN.json` 中的中文译文；**依旧只对 SettingsPage 的允许控件 setText**，不全局替换；动态、自绘及输入控件不保证覆盖。
 - `tests/test_cn_generator.py` 新增 fake QWidget 的长提示精确匹配回归测试；GitHub Windows Python3.14 Actions Run `44044418470` completed/success；此次 CI 不证明用户 Windows 实机 SETTING 页面已成功，需用新 EXE 实测。
 - 最新修复在 main；上次 CI 成功到新代码确认后再更新具体 HEAD。用户下次反馈时优先查看 JSON 出错实际行或 Settings 实际运行截图。
+
+## 2026-11-17 B2.4.1 Qt 显示适配扩展 / 运行时命中诊断
+- 用户要求正式开始 B2.4.1，重点是让已提取/已填的翻译真正作用于更多 Qt 页面，并说明为什么未命中。依旧不修改官方原版 EXE，B 版生成器输出独立 EXE。
+- 实际读取原版 `/mnt/data/_tmp_original.pyz` 的 CodeType 元数据 + Python3.14 `raven-bytecode-314(2).json` 核对：`HomePage` / `ClientPage` / `AddonsPage` / `SettingsPage` / `Raven114AddonsPanel` 是页面类。1.14 Addons 真实类名并非 `Addons114Page`，代码已更正。
+- `tools/cn_generator_core.py` 扩展 import-time Qt page adapters，对 HOME/CLIENT/ADDONS/1.14 插件页，分别在初始化、显示及 refresh 时检索页内 QLabel/QAbstractButton/明确自绘类。只替换当前页面构造方法中的 Python 字符串常量（HOME 另参考 refresh/_fill_whats_new）且词库有非空翻译的静态文字。状态、进度、路径、输入框和 PLAY/UPDATE/INSTALL 业务状态明确排除；**不是全局 setText Hook**。SETTINGS 同步扩展为 __init__ 常量精确匹配和受控 tooltip 翻译。
+- `translations/zh_CN.json` 从 46 扩至 67 个单层英文→中文词条；新增 HOME Register/Database/Bug Report/Installed/What's New 等和 ADDONS Installed/Available/Check Updates/Update All/Rescan Disk 等真实静态常量。未将字典格式改成 schema 分类。
+- 运行时每次生成程序启动在 `%LOCALAPPDATA%/RavenLaunch-CN/translation-coverage.jsonl` 写 `session-start`，按唯一事件记录 `adapter-ready`、`adapter-missing`、`adapter-error`、`unsupported-control`、`applied`、`tooltip-applied`；不记录文本输入框的动态内容，日志写失败不影响启动器。生成器 GUI 新增「查看翻译诊断」，读取最新会话、从当前 JSON 提取有效词条，输出 `translation-coverage-summary.json`，区分实际命中、适配器错误、未观察到的已翻译词条。未观察到不等于失败，页面可能未进入。
+- `tools/translation_diagnostics.py` 和 `tests/test_translation_diagnostics.py` 新增摘要器和合成测试。Python3.14 GUI stub 测试 `test_home_adapter_scoped_constructor_refresh_and_diagnostics` 与 missing-class test 通过。
+- 第一处真实 CI 回归 Run `44045884870` failure：测试错误地把字面写在 HOME __init__ 中的英文当成外部动态文本，产生 expected untranslated 而实际被翻译；修正测试将该句放在外层闭包，Commit `e8dec37e`。之后 GitHub Actions Run `44046068558` success。
+- 最新完整 Windows Actions Run `44046522951` completed/success：Python3.14 syntax + all synthetic tests + PyInstaller EXE build + artifact upload 通过；没有对生成后的真实游戏窗口或实机验证。
+- 风险：未知自绘 QWidget 可能没有 text/setText API，日志记录 unsupported-control，不强行修改；动态进度文本和未列入 page constructor 的文字可能仍为英文；类方法级 Hook 与原版官方更新后接口差异需重新验证。业务状态逻辑和 SHA-256 误报修复未移除。
+- 下一步用户本机运行最新 generator，再从未经修改的原版 EXE 生成不同输出路径、打开四页、检查视觉、拖动、更新检测和功能，点击「查看翻译诊断」上传 summary.json 或截图，定位实际未命中的控件，再小范围扩展，不盲目全局替换。
