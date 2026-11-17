@@ -49,6 +49,27 @@ _CN_SOURCE_EXE_SHA256 = "__RAVEN_SOURCE_EXE_SHA256__"
 
 _CN_TRANSLATIONS = __RAVEN_CN_DICTIONARY__
 
+# Only these static SETTINGS widget labels are eligible for in-widget translation.
+# This is deliberately NOT a global setText hook: state_lbl and other status
+# labels can be read back as business-state values by the original app.
+_CN_SETTINGS_UI_KEYS = frozenset((
+    "SETTINGS",
+    "GAME CLIENT",
+    "GAME LOCATION",
+    "ADDONS FOLDER",
+    "EXISTING INSTALL",
+    "INSTALL...",
+    "BROWSE...",
+    "VERIFY",
+    "RESET CLIENT LINK",
+    "1.12 Vanilla - the original 2006 visual experience",
+    "1.14 Classic - classic gameplay with today's graphics",
+    "HD textures for the 1.14 client - sharper art, a large extra download.",
+    "PLAY starts the selected client.",
+    "Avoid Program Files / Desktop / Downloads / Documents.",
+    "Used to reinstall the client. Clears the saved WoW folder so PLAY becomes INSTALL and you can choose a new location. Does not delete files on disk.",
+))
+
 
 def _cn_patch_widget(cls, draw_method, translations):
     if getattr(cls, "_raven_cn_patched", False):
@@ -75,12 +96,59 @@ def _cn_patch_widget(cls, draw_method, translations):
     cls._raven_cn_patched = True
 
 
+def _cn_patch_settings_page(module):
+    page_cls = getattr(module, "SettingsPage", None)
+    if page_cls is None or getattr(page_cls, "_raven_cn_settings_patched", False):
+        return
+    # Only inspect Qt widgets owned by SettingsPage; do not modify MainWindow
+    # status labels, addons pages, navigation routing or text input contents.
+    from PySide6.QtWidgets import QLabel, QAbstractButton
+
+    def _cn_translate_static(self):
+        for widget_type in (QLabel, QAbstractButton):
+            for widget in self.findChildren(widget_type):
+                try:
+                    old = widget.text()
+                    if old in _CN_SETTINGS_UI_KEYS:
+                        new = _CN_TRANSLATIONS.get(old)
+                        if new and new != old:
+                            widget.setText(new)
+                except RuntimeError:
+                    # A Qt child may already have been deleted during refresh.
+                    continue
+
+    init = page_cls.__init__
+
+    def _cn_settings_init(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        _cn_translate_static(self)
+
+    page_cls.__init__ = _cn_settings_init
+
+    # Refresh operations recreate/reset some labels. Translate only known
+    # static literal values immediately after the original method finishes.
+    for method_name in ("refresh", "_refresh_game_client"):
+        old_method = getattr(page_cls, method_name, None)
+        if old_method is None:
+            continue
+
+        def _cn_after_refresh(self, *args, _original=old_method, **kwargs):
+            result = _original(self, *args, **kwargs)
+            _cn_translate_static(self)
+            return result
+
+        setattr(page_cls, method_name, _cn_after_refresh)
+    page_cls._raven_cn_settings_patched = True
+
+
 def _cn_patch_loaded(name, module):
     try:
         if name == "ichalaunch.ui.main_window":
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.pages.settings":
+            _cn_patch_settings_page(module)
         elif name == "ichalaunch.core.self_update":
             original_sha = getattr(module, "_running_launcher_sha256", None)
             if not callable(original_sha):
@@ -119,7 +187,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update"))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings"))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
