@@ -45,3 +45,12 @@ Run isolated generator against the real original executable on a trusted Windows
 - `docs/GLYPHSHIFT_RESEARCH.md` 和 `GENERATOR_README.md` 记录已核对的上游实际格式、导入及边界。
 - 尚未对 Glyphshift + IchaLaunch 进行真实 Windows 采集，也未在真实 Windows GUI 回归带词库的新生成器；不得声称此项实机验证通过。
 - 下一阶段 B2.2 才汉化 SETTINGS 普通 QWidget；必须先定位 Qt 显示层和业务文本比较，不允许未经审查把全部 `setText` 翻译。
+
+## 2026-11-17 B2.2 SETTINGS + 扁平 JSON 词库
+- 用户要求的词库正式改为**单层 UTF-8 JSON**：一行一条 `"HOME": "主页"`，不再包含 `schema`、`nav`、`launch` 等元信息/分类。修改 `translations/zh_CN.json`（现共 21 项）、`tools/cn_generator_core.py`、`tests/test_cn_generator.py`；测试会拒绝重复键、嵌套对象、空翻译。仅更改词库格式，不改原版更新 SHA workaround 和打包算法。
+- 旧版扁平化早期两个提交 CI 失败是因为测试仍使用旧 schema；随后 `940a3063` 更新测试，Windows Actions Run `44038495381` success。不得把中间失败视作当前构建状态。
+- B2.2 在 `tools/cn_generator_core.py` 增加`ichalaunch.ui.pages.settings` 专属 import hook：替换 `SettingsPage.__init__` 及 `refresh`/`_refresh_game_client` 的后处理；仅检索本页 `QLabel` / `QAbstractButton`，只对 `_CN_SETTINGS_UI_KEYS` 白名单中的精确静态文字应用扁平 JSON 译文。此为首次有限度修改 QLabel/QAbstractButton.text()，**需要真实业务回归**。不全局替换 setText，不影响状态栏 / 输入框 / 其它页面。
+- 根据用户 SETTINGS 截图加入 GAME CLIENT、GAME LOCATION、ADDONS FOLDER、EXISTING INSTALL、INSTALL...、BROWSE...、VERIFY、RESET CLIENT LINK 和部分英文说明。部分文字可能因为 UI 对象类别和标点不一致仍显示英文；以 Windows 运行截图定位，不做凭空宣称。
+- 加入合成 Qt 测试 `test_settings_static_labels_and_refresh_only`，证明已列入白名单的标签更新、非白名单 `UPDATE` 状态保持英文。Python 3.14 Windows Actions Run `44038920863` completed/success；**实际生成 EXE 后打开 SETTINGS 页面尚未实机验证**。
+- 当前工作树所有远端修改均提交 main；不要改写指定历史提交。
+- 下一步：使用新版生成器，选择未经改动的原版 EXE，生成新的 IchaLaunch-CN.exe；在 Windows 依次检查 SETTINGS 标题、游戏客户端、游戏目录、按钮、刷新后文本、导航、官方更新提示状态和游戏启动。若有英文未捕获，优先检查对象类型与确切字符串，避免继续盲目添加翻译键。
