@@ -124,6 +124,66 @@ def _cn_patch_widget(cls, draw_method, translations, reader_name="text"):
     cls._raven_cn_patched = True
 
 
+def _cn_patch_config_editors(module):
+    """Translate only display-only QLabel captions in the two CVar editors.
+
+    Config keys, numeric values, QComboBox model items, and edit fields are
+    kept entirely unchanged so saving Config.wtf/dxvk.conf is unaffected.
+    """
+    from PySide6.QtWidgets import QLabel
+    editor_definitions = (
+        ("ConfigWtfSettingsDialog", "ichalaunch.game.config_wtf_edits", "CVAR_SPECS"),
+        ("DxvkConfSettingsDialog", "ichalaunch.game.dxvk_conf_edits", "DXVK_SPECS"),
+    )
+    import importlib as _cn_importlib
+
+    for class_name, spec_module, spec_attr in editor_definitions:
+        cls = getattr(module, class_name, None)
+        if cls is None:
+            _cn_log("adapter-missing", "config-editor", class_name)
+            continue
+        if getattr(cls, "_raven_cn_config_patched", False):
+            continue
+
+        # Only use the official presentation-only Spec.label/group/hint
+        # fields and literal captions of the dialog UI constructor.
+        try:
+            spec_mod = _cn_importlib.import_module(spec_module)
+            specs = getattr(spec_mod, spec_attr, ())
+            eligible = _cn_static_literals(cls.__init__.__code__)
+            for spec in specs:
+                for key in ("label", "group", "hint"):
+                    value = getattr(spec, key, None)
+                    if isinstance(value, str):
+                        eligible.add(value)
+        except (AttributeError, ImportError, TypeError) as exc:
+            _cn_log("adapter-error", "config-editor", type(exc).__name__)
+            continue
+
+        original_init = cls.__init__
+
+        def translated_init(self, *args, _init=original_init,
+                            _eligible=frozenset(eligible), _tag=class_name,
+                            **kwargs):
+            _init(self, *args, **kwargs)
+            for label in self.findChildren(QLabel):
+                try:
+                    source = label.text()
+                    if (not isinstance(source, str)
+                            or source not in _eligible):
+                        continue
+                    translated = _CN_TRANSLATIONS.get(source)
+                    if translated and translated != source:
+                        label.setText(translated)
+                        _cn_log("config-label-applied", _tag, source)
+                except RuntimeError:
+                    continue
+
+        cls.__init__ = translated_init
+        cls._raven_cn_config_patched = True
+        _cn_log("adapter-ready", "config-editor", class_name)
+
+
 def _cn_patch_theme_nav(module):
     """Translate CatNavButton's QStyleOption caption, not navigation state."""
     cls = getattr(module, "ThemeButton", None)
@@ -529,6 +589,8 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.dialogs":
+            _cn_patch_config_editors(module)
         elif name == "ichalaunch.ui.widgets.theme_checkbox":
             cls = getattr(module, "ThemeCheckBox", None)
             if cls is not None:
@@ -593,7 +655,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
