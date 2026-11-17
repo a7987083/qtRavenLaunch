@@ -42,6 +42,68 @@ class GeneratorTests(unittest.TestCase):
             original = [c for c in script.co_consts if hasattr(c, 'co_code')]
             self.assertTrue(any('ichalaunch' in c.co_names for c in original))
 
+    def test_optional_login_server_patches_only_realmlist_in_output(self):
+        from cn_generator_core import assemble, REALMLIST_ENTRY
+        original_resource = (
+            b'SET realmList "logon.ravencraft.io"\r\n'
+            b'SET patchList "logon.ravencraft.io"\r\n'
+        )
+        raw = fixture()
+        start, cookie, entries = read_carchive(raw)
+        resource_name = REALMLIST_ENTRY.encode("utf-8") + b"\0"
+        entries.append({
+            "name": REALMLIST_ENTRY, "namebytes": resource_name,
+            "kind": b"b", "compressed": 1,
+            "raw_size": len(original_resource),
+            "blob": zlib.compress(original_resource),
+        })
+        source_bytes = assemble(raw[:start], cookie, entries)
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "official.exe"
+            translated = Path(td) / "translated.exe"
+            unchanged = Path(td) / "default.exe"
+            source.write_bytes(source_bytes)
+            custom = generate(source, translated, login_server="apac.capycraft.io")
+            self.assertEqual(custom["login_server_override"], "apac.capycraft.io")
+            self.assertEqual(custom["modified_entries"], ["run", REALMLIST_ENTRY])
+            self.assertEqual(source.read_bytes(), source_bytes)
+            _, _, output_entries = read_carchive(translated.read_bytes())
+            record = next(row for row in output_entries if row["name"] == REALMLIST_ENTRY)
+            content = zlib.decompress(record["blob"])
+            self.assertEqual(content,
+                b'SET realmList "apac.capycraft.io"\r\n'
+                b'SET patchList "logon.ravencraft.io"\r\n')
+            default = generate(source, unchanged, login_server="   ")
+            self.assertIsNone(default["login_server_override"])
+            self.assertEqual(default["modified_entries"], ["run"])
+            _, _, default_entries = read_carchive(unchanged.read_bytes())
+            default_entry = next(row for row in default_entries
+                                 if row["name"] == REALMLIST_ENTRY)
+            self.assertEqual(default_entry["blob"], zlib.compress(original_resource))
+            self.assertTrue(default["original_unchanged"])
+
+    def test_login_server_validation_and_missing_resource_rejected(self):
+        from cn_generator_core import validate_login_server
+        self.assertIsNone(validate_login_server(None))
+        self.assertIsNone(validate_login_server(""))
+        self.assertEqual(validate_login_server(" apac.capycraft.io "),
+                         "apac.capycraft.io")
+        for bad in ("https://apac.capycraft.io", "example.org:3724",
+                    "example.org/path", 'example.org"\nSET patchList "bad',
+                    "localhost\r\n", "a..b", "-bad.org", "bad_.org",
+                    "2001:db8::1"):
+            with self.subTest(host=repr(bad)):
+                with self.assertRaises(ValueError):
+                    validate_login_server(bad)
+        with tempfile.TemporaryDirectory() as td:
+            source = Path(td) / "original.exe"
+            target = Path(td) / "output.exe"
+            source.write_bytes(fixture())  # deliberately no realmlist data
+            with self.assertRaisesRegex(ValueError, "realmlist.wtf"):
+                generate(source, target, login_server="apac.capycraft.io")
+            self.assertFalse(target.exists())
+            self.assertEqual(source.read_bytes(), fixture())
+
     def test_self_update_uses_original_source_sha_without_disabling_updater(self):
         original_source_sha = 'a' * 64
         code = compile('pass', 'synthetic-run.py', 'exec')
