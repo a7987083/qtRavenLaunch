@@ -27,3 +27,10 @@ Current repository: `a7987083/qtRavenLaunch`, branch `main`.
 
 ## Next action
 Run isolated generator against the real original executable on a trusted Windows system and capture first real failure, if any. If the launcher opens, verify only selected navigation and launch text first, then expand dictionary. Do not call CI success a functional validation. Do not restore previous lost Git history by force-push.
+
+## 2026-11-17 原版无更新 / 汉化版提示“Update RavenLaunch to v1.6.28”修复
+- 用户 Windows 截图确认：原版不提示更新，汉化版在更新按钮 ToolTip 提示 `Update RavenLaunch to v1.6.28`。
+- 真实原版 PYZ `ichalaunch.core.self_update` 解压后静态字符串证据：`Same semver, different EXE hash ... quick-fix without a version bump.`、`True for a newer pin, or a same-version hotfix with a new sha256.`、`_running_launcher_sha256`、`update_should_offer`、`read_cached_launcher_release`。推断当前问题是生成中文 EXE 后本机 SHA 改变，官方同版本 hotfix 比较被触发；未在 Windows 跟踪确认完整条件分支。
+- `tools/cn_generator_core.py` 修改：为新生成 EXE 的 bootstrap 嵌入输入官方 EXE 的 SHA-256；拦截 `ichalaunch.core.self_update` 导入，仅替代 `_running_launcher_sha256` 的比较结果为**未修改的输入原版 SHA**。保留 `update_should_offer`、远端 pin、下载文件校验、其他更新功能。现有自动更新若执行，会覆盖汉化版，须重新生成。
+- Core commit `6ff78700`；tests `7a1a359c`；README `c3318c3c`。新增 Python3.14 synthetic test，运行成功；GitHub Actions Run `44035628254` completed success，artifact `14307566182`（`RavenLaunch-CN-Generator-Windows`）， ZIP SHA-256 `3e812cb51eb16e71f664528c631191cbdcf05a3746485fb272bac883c45f9b95`。
+- **未验证**：用户 Windows 重新生成版是否不再误报、真实 GUI 更新通知处理、缓存一致性；必须让用户实际重生成并启动检查，不能称已实机回归通过。
