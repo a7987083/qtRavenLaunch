@@ -314,11 +314,17 @@ def _cn_patch_page(module_name, module):
     eligible = _cn_static_literals(original_init.__code__)
     # Only static strings appearing in the page's own UI constructor, not
     # arbitrary translated strings collected elsewhere in the PYZ archive.
-    if module_name == "ichalaunch.ui.pages.home":
-        for name in ("refresh", "_fill_whats_new"):
-            method = getattr(page_cls, name, None)
-            if hasattr(method, "__code__"):
-                eligible.update(_cn_static_literals(method.__code__))
+    eligible_methods = {
+        "ichalaunch.ui.pages.home": ("refresh", "_fill_whats_new"),
+        "ichalaunch.ui.pages.client": (
+            "_add_presets_page", "refresh_from_settings", "refresh_plan",
+            "_refresh_patch9_banner"),
+        "ichalaunch.ui.pages.addons_114": ("_build_rows",),
+    }
+    for name in eligible_methods.get(module_name, ()):
+        method = getattr(page_cls, name, None)
+        if hasattr(method, "__code__"):
+            eligible.update(_cn_static_literals(method.__code__))
     page_id = module_name.rsplit(".", 1)[-1]
 
     def translate_visible(self):
@@ -368,7 +374,13 @@ def _cn_patch_page(module_name, module):
         translate_visible(self)
     page_cls.__init__ = init_translated
 
-    for method_name in ("showEvent", "refresh"):
+    refresh_methods = {
+        "ichalaunch.ui.pages.client": (
+            "refresh_from_settings", "refresh_plan", "_refresh_patch9_banner"),
+        "ichalaunch.ui.pages.addons_114": ("_build_rows", "refresh_status"),
+    }
+    methods = ("showEvent", "refresh") + refresh_methods.get(module_name, ())
+    for method_name in methods:
         previous = getattr(page_cls, method_name, None)
         if not callable(previous):
             continue
