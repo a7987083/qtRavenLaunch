@@ -860,7 +860,7 @@ class GeneratorTests(unittest.TestCase):
         class RecommendedForkSwapDialog(ThemedDialog):
             def __init__(self):
                 super().__init__(None, "Recommended addon forks",
-                                 "These installed addons have a RavenCraft-recommended fork.")
+                                 "These installed addons have a RavenCraft-recommended fork. Switch is selected by default — Apply switches those rows. Keep this fork is remembered for the current recommendation (we ask again only if the catalog pick changes). After a switch, Installed rows get a Revert control.")
                 self.addon = QLabel("SHAGUTWEAKS")
                 self.row = QLabel("Installed: ShaguTweaks-dusk\n"
                                   "Recommended: ShaguTweaks-octowowst")
@@ -884,7 +884,7 @@ class GeneratorTests(unittest.TestCase):
             "PLAY will become INSTALL so you can choose a new install "
             "location. This does not delete any files on disk.":
                 "现在可重新选择目录，磁盘文件不会被删除。",
-            "These installed addons have a RavenCraft-recommended fork.":
+            "These installed addons have a RavenCraft-recommended fork. Switch is selected by default — Apply switches those rows. Keep this fork is remembered for the current recommendation (we ask again only if the catalog pick changes). After a switch, Installed rows get a Revert control.":
                 "这些插件已有推荐分支。",
             "SHAGUTWEAKS": "不要修改模组名称",
         }
