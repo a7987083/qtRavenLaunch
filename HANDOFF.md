@@ -148,3 +148,15 @@ Run isolated generator against the real original executable on a trusted Windows
 - `tests/test_cn_generator.py` 新增两种弹窗模拟测试（配置项中文、无关文字不变、保存值不变）。首个真实失败 Run `44061061730` 是代码收集所有 init 字符串把测试中的不相干业务 label 误改，修复 Commit `75f03512` 仅收集显式展示字段；Run `44061378221` Python3.14 tests + PyInstaller Windows EXE build 完整 success。后续 `tools/translation_diagnostics.py` 把 `config-label-applied` 计入命中，Commit `41560763`，CI `44061492965` 为当前后续检查。
 - `GENERATOR_README.md` 已写操作边界。当前 Windows 真实 GUI 弹窗汉化、长文本截断、Save/应用实际行为和用户外部独立 zh_CN.json 是否包含新词，**全部未验证**；仅记录 CI 和合成测试，不可声称实机成功。
 - 重要后续：定位 Vanilla Tweaks V2 动态描述到底是哪个 Qt 组件类及其创建/更新路径；不要盲目把全 ClientPage 的 JLabel、QComboBox 或模组名称全局翻译。用户此前已确认左侧 CatNavButton 中文生效，保持此稳定基线。官方 EXE SHA 兼容修复不能移除。
+
+## 2026-11-17 B2.4.8：四类确认弹窗显示层汉化
+- 用户最终上传 7 张真实 Windows 截图，去重后 4 类：`Addon folder name mismatch`、`Recommended addon forks`、`GAME UPDATE`、`Reset Client Link`。此前按钮部分已经中文，但标题/正文仍英文，包含动态文件数、目录名、插件仓库标识。
+- 真实原版 `/mnt/data/_tmp_original.pyz`（来源 `IchaLaunch.exe`，原版 SHA-256 `e54556fa8711fa577d48b38fe2501d0e41f315b973651799d753929ed13c1697`）中可由本地 Python3.13 marshal 正确解析的 `ichalaunch.ui.widgets.metal_framed_dialog.MetalFramedDialog.__init__` CodeType 元数据显示参数 `parent,title,text`，该基类在 Qt 中构建 `ThemedDialogTitle`/`ThemedDialogBody` QLabel。原版 `ichalaunch.ui.main_window`、`ichalaunch.ui.widgets.dialogs` 本地3.13 marshal 不能反汇编，但**直接从其经过解压的 Python3.14 marshal 字节中核对**了 GAME UPDATE / Reset Client Link / RecommendedForkSwapDialog / confirm_addon_toc_renamer 的真实静态英文常量，避免猜测；绝未使用 Python3.13 dis 误解 3.14 opcode。
+- `tools/cn_generator_core.py` 中新增 `_cn_patch_metal_prompts` 和 `_cn_patch_dialog_family`，以 import-time Hook 方式在基类、ThemedDialog 和 RecommendedForkSwapDialog 初始化后，对已知标题及其 QLabel 正文进行限定显示翻译；特别处理 recommended fork 子类在基类完成后追加的仓库行。
+- 动态模板 `{count}`、`{folder}`、`{toc}`、`{target}` 只插入数字或原始名字，保留 .toc 文件名、插件 ID，绝不改变 DialogResult、文件重命名回调或更新逻辑。模板使用单趟正则替换，防止目录名里包含 `{toc}` 时被连锁替换；占位符缺失时保持英文。
+- `_CN_PROMPT_STATIC` 是每个已知弹窗明确的源字符串白名单；**不能把所有子 QLabel 或词库中的任何已翻译模组名称直接改掉**，避免 catalog 信息错误。`translation-coverage.jsonl` 仅记录 `dialog-applied` + 类型 title/body，不泄露动态目录名称。
+- `translations/zh_CN.json` 保留用户要求的单层 JSON 格式，加入 19 个四类弹窗标题、说明/静态段落及动态模板（此前151→170词条）。
+- `tests/test_cn_generator.py` 新增四类弹窗模拟 Qt QLabel 回归，以及特殊目录 `Super{toc}Raid-saa` + 不完整模板不修改的测试。出现过连续中间 CI failure，首个重要源码问题为 `getattr(cls, "_raven_cn_prompt_wrapper", False)` 错误读取父类标志，导致 RecommendedForkSwapDialog **跳过自己初始化后的二次扫描**；现改为 `vars(cls).get` 仅看自己的 Hook 标记，Commit `31573fc3`，CI Run `44069983000` completed/success。另两个模拟样本使用截断的原版推荐说明或仅按段设置 Reset body 翻译，现已按真实原文及严格分段规则更正。
+- 最新模板加固 Commit `64b9e16f`，测试加固 Commit `00803bf9`，最新 Run `44070210169` 待核对。没有 Windows 实机确认四个真实弹窗汉化、按钮响应与布局；**CI success 不等于实机验证**。
+- 旧稳定基线：nav / CatNavButton 中文用户已实机确认；生成器仍只生成新 EXE，不改官方原版；原版 SHA 更新比较修复继续保留。
+- 下一步：下载最新 Windows generator，使用同一官方 IchaLaunch.exe + 已合并新词条的用户词库，逐一重现四类弹窗；特别确认文件数量与目录/仓库名称保留、长中文不裁切、Yes/No/Apply/Update 按钮实际逻辑正常。
