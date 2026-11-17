@@ -368,6 +368,12 @@ def _cn_patch_page(module_name, module):
                         unsafe in identifier.casefold()
                         for unsafe in ("status", "progress", "loading", "path", "state")):
                     continue
+                # CLIENT sidebar categories act as navigation values. Keep
+                # the underlying Qt text untouched; GluePanelButton receives
+                # its translation only during native paintEvent.
+                if (module_name == "ichalaunch.ui.pages.client"
+                        and type(widget).__name__ == "GluePanelButton"):
+                    continue
                 get_text = getattr(widget, "text", None)
                 set_text = getattr(widget, "setText", None)
                 if not callable(get_text) or not callable(set_text):
@@ -425,6 +431,13 @@ def _cn_patch_loaded(name, module):
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+        elif name == "ichalaunch.ui.widgets.glue_panel_button":
+            cls = getattr(module, "GluePanelButton", None)
+            if cls is not None:
+                # Keep navigation state in English; only the custom QPainter
+                # call sees the localized QLabel-like text.
+                _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
+                _cn_log("paint-adapter-ready", "client", "GluePanelButton")
         elif name == "ichalaunch.ui.widgets.glue_combo":
             _cn_patch_glue_combo(module)
         elif name == "ichalaunch.ui.pages.settings":
@@ -469,7 +482,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
