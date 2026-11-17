@@ -263,7 +263,7 @@ def load_translations(path: Path | None = None) -> dict[str, str]:
     for source, translated in value.items():
         if not isinstance(source, str) or not source.strip() or len(source) > 512:
             raise ValueError("Invalid English source label")
-        if not isinstance(translated, str) or not translated.strip() or len(translated) > 512:
+        if not isinstance(translated, str) or len(translated) > 512:
             raise ValueError(f"Invalid translation for {source!r}")
         checked[source] = translated
     return checked
@@ -331,6 +331,8 @@ def make_bootstrap(original, source_sha256, translations=None):
         raise ValueError("Invalid original-source digest")
     if translations is None:
         translations = load_translations()
+    # Blank translations from exported zh_CN.json mean "keep original".
+    translations = {key: value for key, value in translations.items() if value.strip()}
     source = BOOTSTRAP_SOURCE.replace("__RAVEN_SOURCE_EXE_SHA256__", source_sha256)
     marker = "__RAVEN_CN_DICTIONARY__"
     if source.count(marker) != 1:
