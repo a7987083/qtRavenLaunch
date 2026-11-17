@@ -1,6 +1,7 @@
 """Self-contained Windows GUI for producing an independently runnable CN launcher."""
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 import threading
 import tkinter as tk
@@ -60,6 +61,8 @@ def main():
     export_button.pack(side='left', padx=(0, 12))
     button = ttk.Button(actions, text='生成中文版 EXE')
     button.pack(side='left')
+    diagnostics_button = ttk.Button(actions, text='查看翻译诊断')
+    diagnostics_button.pack(side='left', padx=(12, 0))
 
     def finish(result, err):
         button.configure(state='normal')
@@ -148,6 +151,21 @@ def main():
 
         threading.Thread(target=work, daemon=True).start()
 
+    def view_translation_diagnostics():
+        base = os.environ.get('LOCALAPPDATA') or os.environ.get('TEMP') or '.'
+        report = Path(base) / 'RavenLaunch-CN' / 'translation-coverage.jsonl'
+        if not report.is_file():
+            messagebox.showinfo(
+                '尚无诊断报告',
+                '请先运行新生成的 IchaLaunch-CN.exe，并进入需要翻译的页面。'
+                '诊断文件将在对应页面的 Qt 适配器执行时生成。')
+            return
+        try:
+            os.startfile(str(report))
+        except OSError as exc:
+            messagebox.showerror('打开诊断失败', str(exc))
+
+    diagnostics_button.configure(command=view_translation_diagnostics)
     export_button.configure(command=export_original_strings)
     button.configure(command=start)
     app.mainloop()
