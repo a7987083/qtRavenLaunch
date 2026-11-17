@@ -135,27 +135,51 @@ def _cn_patch_settings_page(module):
         "GradientLabel", "GluePanelButton", "ThemeRadioButton", "ThemeCheckBox"
     ))
 
+    init = page_cls.__init__
+    eligible_settings = _CN_SETTINGS_UI_KEYS | _cn_static_literals(init.__code__)
+
     def _cn_translate_static(self):
-        for widget in self.findChildren(QWidget):
-            try:
+        if getattr(self, "_raven_cn_scanning", False):
+            return
+        self._raven_cn_scanning = True
+        try:
+            for widget in self.findChildren(QWidget):
                 if not (isinstance(widget, (QLabel, QAbstractButton))
                         or type(widget).__name__ in safe_custom_types):
                     continue
-                read_text = getattr(widget, "text", None)
-                write_text = getattr(widget, "setText", None)
-                if not callable(read_text) or not callable(write_text):
+                identifier = getattr(widget, "objectName", lambda: "")()
+                if isinstance(identifier, str) and any(
+                        x in identifier.casefold()
+                        for x in ("status", "progress", "loading", "path", "state")):
                     continue
-                old = read_text()
-                if not isinstance(old, str) or old not in _CN_SETTINGS_UI_KEYS:
+                try:
+                    reader = getattr(widget, "text", None)
+                    writer = getattr(widget, "setText", None)
+                    if not callable(reader) or not callable(writer):
+                        _cn_log("unsupported-control", "settings", type(widget).__name__)
+                        continue
+                    original = reader()
+                    if (isinstance(original, str) and original in eligible_settings
+                            and original not in _CN_NEVER_REPLACE):
+                        new = _CN_TRANSLATIONS.get(original)
+                        if new and new != original:
+                            writer(new)
+                            _cn_log("applied", "settings", original)
+                    get_tip = getattr(widget, "toolTip", None)
+                    set_tip = getattr(widget, "setToolTip", None)
+                    if callable(get_tip) and callable(set_tip):
+                        tip = get_tip()
+                        if isinstance(tip, str) and tip in eligible_settings:
+                            new = _CN_TRANSLATIONS.get(tip)
+                            if new and new != tip:
+                                set_tip(new)
+                                _cn_log("tooltip-applied", "settings", tip)
+                except RuntimeError:
                     continue
-                new = _CN_TRANSLATIONS.get(old)
-                if new and new != old:
-                    write_text(new)
-            except RuntimeError:
-                # A Qt child may already have been deleted during refresh.
-                continue
-
-    init = page_cls.__init__
+        except Exception as exc:
+            _cn_log("adapter-error", "settings", type(exc).__name__)
+        finally:
+            self._raven_cn_scanning = False
 
     def _cn_settings_init(self, *args, **kwargs):
         init(self, *args, **kwargs)
@@ -177,6 +201,7 @@ def _cn_patch_settings_page(module):
 
         setattr(page_cls, method_name, _cn_after_refresh)
     page_cls._raven_cn_settings_patched = True
+    _cn_log("adapter-ready", "settings")
 
 
 
@@ -268,6 +293,8 @@ def _cn_patch_page(module_name, module):
                     continue
                 get_text = getattr(widget, "text", None)
                 set_text = getattr(widget, "setText", None)
+                if not callable(get_text) or not callable(set_text):
+                    _cn_log("unsupported-control", page_id, type(widget).__name__)
                 if callable(get_text) and callable(set_text):
                     original = get_text()
                     if (isinstance(original, str) and original in eligible
