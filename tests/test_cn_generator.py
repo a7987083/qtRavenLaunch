@@ -687,6 +687,67 @@ class GeneratorTests(unittest.TestCase):
                 if not isinstance(finder, ns.get("_CnFinder", type(None)))
             ]
 
+    def test_client_catalog_description_label_is_scoped_not_status(self):
+        """Only an allowlisted catalog description QLabel is mutated."""
+        description = (
+            "Patches WoW.exe (not a DLL). Farclip, grass, nameplates, "
+            "4GB LAA, camera skip fix, custom glues, and blue moon on by "
+            "default. Widescreen FoV, sound, and quickloot are optional "
+            "— use the cog to configure."
+        )
+        class QWidget:
+            def __init__(self, label="", name=""):
+                self.value, self.name = label, name
+            def text(self):
+                return self.value
+            def setText(self, value):
+                self.value = value
+            def objectName(self):
+                return self.name
+            def toolTip(self):
+                return ""
+            def setToolTip(self, value):
+                pass
+        class QLabel(QWidget):
+            pass
+        class QAbstractButton(QWidget):
+            pass
+        class ClientPage:
+            def __init__(self):
+                self.detail = QLabel(description)
+                self.status = QLabel("Not installed", "client_status")
+                self.module_name = QLabel("Vanilla Tweaks V2")
+                self.widgets = [self.detail, self.status, self.module_name]
+            def findChildren(self, cls):
+                return [w for w in self.widgets if isinstance(w, cls)]
+
+        qt = types.ModuleType("PySide6")
+        widgets = types.ModuleType("PySide6.QtWidgets")
+        widgets.QWidget, widgets.QLabel = QWidget, QLabel
+        widgets.QAbstractButton = QAbstractButton
+        qt.QtWidgets = widgets
+        runtime = {}
+        bootstrap = marshal.loads(make_bootstrap(
+            compile("pass", "run.py", "exec"), "a" * 64,
+            {description: "修补 WoW.exe 的画面与兼容性功能。",
+             "Not installed": "未安装",
+             "Vanilla Tweaks V2": "风险：不要修改模组标识"}))
+        with patch.dict(sys.modules, {"PySide6": qt, "PySide6.QtWidgets": widgets}):
+            try:
+                exec(bootstrap, runtime)
+                runtime["_cn_patch_loaded"](
+                    "ichalaunch.ui.pages.client",
+                    types.SimpleNamespace(ClientPage=ClientPage))
+                page = ClientPage()
+                self.assertEqual(page.detail.text(), "修补 WoW.exe 的画面与兼容性功能。")
+                self.assertEqual(page.status.text(), "Not installed")
+                self.assertEqual(page.module_name.text(), "Vanilla Tweaks V2")
+            finally:
+                sys.meta_path[:] = [
+                    f for f in sys.meta_path
+                    if not isinstance(f, runtime.get("_CnFinder", type(None)))
+                ]
+
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / 'launcher.exe'
