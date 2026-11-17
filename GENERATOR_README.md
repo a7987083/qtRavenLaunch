@@ -85,3 +85,24 @@ Glyphshift 的 JSON / CSV 原文可由 `tools/translation_collector.py` 导出�
 - 已更换 `_CN_SETTINGS_UI_KEYS` 为来自原始 CodeType 的精确原文，扩展为设置页内 QWidget 子控件遍历，但**只允许标准 QLabel/QAbstractButton 或四种上述白名单自绘类**、只允许列入 SETTINGS 静态文本白名单的键；明确拒绝输入框和业务状态文本，不使用全局 setText Hook。
 - 单层 `translations/zh_CN.json` 保持 `"英文": "中文"` 格式，按原始常量修正了键，新增 Save、维护/更新等静态词条；本次补充的 Python 3.14 合成 GUI 控件测试覆盖大小写、自绘按钮、输入框排除、refresh 后翻译。
 - **仍未 Windows 实机回归验证新版 SETTINGS 截图**。如仍显示英文，需先确认运行中的新版 EXE 对应新版生成器，接着查找实际类 API 是否缺少 `text()/setText()`，再考虑局部类适配，不能盲目添加词条。
+
+## B2.3 — 从原版 EXE 导出 zh_CN.json
+
+Windows GUI 新增「**导出原始字符串**」按钮：
+
+1. 选择未修改的官方 `IchaLaunch.exe`。
+2. 点击「导出原始字符串」；输出文件默认 `zh_CN.json`，允许自选路径。
+3. 程序**离线**扫描 PyInstaller CArchive → `PYZ.pyz` → `ichalaunch.ui.*` 和 `ichalaunch.app` 的 CPython 3.14 CodeType 常量，严格保留字符串的大小写、标点、空格；排除明显 URL、路径、标识符、资源文件名等，词条仍然是**待审 UI 候选**，而不是全部 UI 或安全可替换的文字。
+4. 输出 JSON 一行一条：`"原始英文": ""`。填好译文后，直接在 GUI「自定义词库（可选）」选择同一个文件，生成新的 `IchaLaunch-CN.exe`。
+5. 未来官方更新，再次选择同一 `zh_CN.json` 导出，提示用户后**保留已经填写的译文，添加新候选为空值**；旧条目不会删除。
+
+开发者命令：
+```powershell
+py -3.14 tools/extract_strings.py "C:\\path\\IchaLaunch.exe" --out zh_CN.json
+```
+
+不启动原版 EXE，不执行其 CodeType，不连接网络，不修改原版文件。PYZ 模块解码失败时停止导出并保留旧词库，避免悄悄丢词条。Python 版本仍严格要求 3.14（打包的 Windows 生成器内自带）。
+
+**重要：** 单层 JSON 不表示全局字符串替换。只有当前 import hook 支持的导航、启动按钮和部分 SETTINGS 文本会显示译文；填入某条新原文不保证生成的程序能显示它。导出也无法保证覆盖运行时拼接、网络文本、图像字及特殊自绘。脚本输出的模块数是静态扫描模块数，不是 UI 已汉化数量。
+
+字典允许译文为空；空译文会被生成器跳过，保留英文，不会把界面文字绘制为空白。生成的 EXE 官方更新 SHA 兼容逻辑维持不变。词库限制为 2 MiB，重复原文键仍拒绝。
