@@ -53,21 +53,34 @@ _CN_TRANSLATIONS = __RAVEN_CN_DICTIONARY__
 # This is deliberately NOT a global setText hook: state_lbl and other status
 # labels can be read back as business-state values by the original app.
 _CN_SETTINGS_UI_KEYS = frozenset((
-    "SETTINGS",
-    "GAME CLIENT",
-    "GAME LOCATION",
-    "ADDONS FOLDER",
-    "EXISTING INSTALL",
-    "INSTALL...",
-    "BROWSE...",
-    "VERIFY",
-    "RESET CLIENT LINK",
-    "1.12 Vanilla - the original 2006 visual experience",
-    "1.14 Classic - classic gameplay with today's graphics",
-    "HD textures for the 1.14 client - sharper art, a large extra download.",
+    "Settings",
+    "Game client",
+    "Game location",
+    "AddOns folder",
+    "Existing install",
+    "Install…",
+    "Browse…",
+    "Verify",
+    "Reset Client Link",
+    "Save",
+    "1.12 Vanilla  -  the original 2006 visual experience",
+    "1.14 Classic  -  classic gameplay with today's graphics",
+    "HD textures for the 1.14 client  -  sharper art, a large extra download",
     "PLAY starts the selected client.",
     "Avoid Program Files / Desktop / Downloads / Documents.",
     "Used to reinstall the client. Clears the saved WoW folder so PLAY becomes INSTALL and you can choose a new location. Does not delete files on disk.",
+    "Reset to default",
+    "Use {game folder}\\Interface\\AddOns",
+    "Updates",
+    "Automatically Check For Updates On Startup",
+    "Privacy",
+    "GitHub API",
+    "Personal access token (optional)",
+    "Saved automatically when you leave the field or click Save",
+    "Maintenance",
+    "Clear Cache",
+    "Redo Setup",
+    "Check Game Permissions",
 ))
 
 
@@ -102,20 +115,33 @@ def _cn_patch_settings_page(module):
         return
     # Only inspect Qt widgets owned by SettingsPage; do not modify MainWindow
     # status labels, addons pages, navigation routing or text input contents.
-    from PySide6.QtWidgets import QLabel, QAbstractButton
+    from PySide6.QtWidgets import QWidget, QLabel, QAbstractButton
+    # Several SETTINGS captions/buttons are custom-painted QWidget children,
+    # not QLabel / QAbstractButton. They still expose Qt-compatible text()
+    # and setText() APIs. Reject editable inputs even if their text collides.
+    safe_custom_types = frozenset((
+        "GradientLabel", "GluePanelButton", "ThemeRadioButton", "ThemeCheckBox"
+    ))
 
     def _cn_translate_static(self):
-        for widget_type in (QLabel, QAbstractButton):
-            for widget in self.findChildren(widget_type):
-                try:
-                    old = widget.text()
-                    if old in _CN_SETTINGS_UI_KEYS:
-                        new = _CN_TRANSLATIONS.get(old)
-                        if new and new != old:
-                            widget.setText(new)
-                except RuntimeError:
-                    # A Qt child may already have been deleted during refresh.
+        for widget in self.findChildren(QWidget):
+            try:
+                if not (isinstance(widget, (QLabel, QAbstractButton))
+                        or type(widget).__name__ in safe_custom_types):
                     continue
+                read_text = getattr(widget, "text", None)
+                write_text = getattr(widget, "setText", None)
+                if not callable(read_text) or not callable(write_text):
+                    continue
+                old = read_text()
+                if not isinstance(old, str) or old not in _CN_SETTINGS_UI_KEYS:
+                    continue
+                new = _CN_TRANSLATIONS.get(old)
+                if new and new != old:
+                    write_text(new)
+            except RuntimeError:
+                # A Qt child may already have been deleted during refresh.
+                continue
 
     init = page_cls.__init__
 
