@@ -48,6 +48,7 @@ import importlib.util as _cn_util
 _CN_SOURCE_EXE_SHA256 = "__RAVEN_SOURCE_EXE_SHA256__"
 
 _CN_TRANSLATIONS = __RAVEN_CN_DICTIONARY__
+_CN_CUSTOM_LOGIN_HOST = __RAVEN_LOGIN_HOST__
 
 # Only these static SETTINGS widget labels are eligible for in-widget translation.
 # This is deliberately NOT a global setText hook: state_lbl and other status
@@ -774,9 +775,119 @@ def _cn_patch_page(module_name, module):
     page_cls._raven_cn_page_patched = True
     _cn_log("adapter-ready", page_id)
 
+
+def _cn_patch_realm_status(module):
+    """The bundled status probe also references its own official LOGON_HOST."""
+    if not _CN_CUSTOM_LOGIN_HOST:
+        return
+    module.LOGON_HOST = _CN_CUSTOM_LOGIN_HOST
+    # Force re-read from embedded realmlist resource after startup.
+    if hasattr(module, "_cached_host"):
+        module._cached_host = None
+    _cn_log("login-adapter-ready", "realm-status", "custom")
+
+
+def _cn_replace_realm_line(raw, host):
+    """Modify only one realmList line; never touch patchList or other CVars."""
+    import re as _cn_re
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("Cannot safely edit a non-UTF8 game realmlist")
+    expr = _cn_re.compile(
+        r'(?im)^([ \t]*SET[ \t]+realmList[ \t]+)(?:"[^"\r\n]*"|[^\s\r\n]+)([^\r\n]*)$')
+    matches = list(expr.finditer(text))
+    if len(matches) > 1:
+        raise ValueError("Duplicate realmList lines; refusing to rewrite")
+    new_line = 'SET realmList "' + host + '"'
+    if matches:
+        old = matches[0]
+        # Preserve the original indentation and trailing comments/spaces.
+        new_line = old.group(1) + '"' + host + '"' + old.group(2)
+        new_text = text[:old.start()] + new_line + text[old.end():]
+    else:
+        newline = "\r\n" if "\r\n" in text else "\n"
+        new_text = text + ("" if not text or text.endswith(("\n", "\r")) else newline) + new_line + newline
+    return new_text.encode("utf-8")
+
+
+def _cn_patch_realmlist_runtime(module):
+    """Custom mode: honor game-root/config paths but change ONLY realmList.
+
+    Official mode leaves the module, including its updater and repair paths,
+    entirely untouched. Do not call original apply(): it rewrites patchList.
+    """
+    if not _CN_CUSTOM_LOGIN_HOST or getattr(module, "_raven_cn_realm_patched", False):
+        return
+    host = _CN_CUSTOM_LOGIN_HOST
+    original_apply = getattr(module, "apply_ravencraft_realm_endpoints", None)
+    status_class = getattr(module, "RealmlistFileStatus", None)
+    if not callable(original_apply) or status_class is None:
+        _cn_log("adapter-missing", "realmlist-runtime", "original-api")
+        return
+    module.EXPECTED_HOST = host
+
+    # Official property checked both CVars. In custom mode the unchanged
+    # patchList is deliberately NOT a reason to overwrite the client files.
+    def realm_needs_update(self):
+        return bool(self.missing_file or not module._host_matches(self.realm_list))
+    status_class.needs_update = property(realm_needs_update)
+
+    def apply_custom_realm(game):
+        from pathlib import Path as _cn_Path
+        root = _cn_Path(game)
+        changed = []
+        destination = module.realmlist_wtf_path(root)
+        if destination is None:
+            destination = root / module.REALMLIST_NAME
+        targets = [destination]
+        cfg = module.config_wtf_path(root)
+        if cfg is not None and cfg.is_file():
+            targets.append(cfg)
+
+        # Collect all patches first: invalid/ambiguous files must fail before
+        # touching any game config, not midway through the two-file update.
+        pending = []
+        for target in targets:
+            before = target.read_bytes() if target.is_file() else b""
+            after = _cn_replace_realm_line(before, host)
+            if after != before:
+                pending.append((target, after.decode("utf-8")))
+        for target, body in pending:
+            module._write_text(target, body)
+            changed.append(target)
+        _cn_log("login-runtime-applied", "realmlist", "realm-only")
+        return changed
+
+    def custom_prompt_title(rows):
+        return ("Game login address needs updating" if
+                module.realmlist_prompt_is_login_blocking(rows)
+                else "Config.wtf login address differs")
+
+    def custom_prompt_body(rows):
+        names = []
+        for row in rows:
+            current = getattr(row, "realm_list", None) or "(missing)"
+            names.append(str(row.label) + ": realmList=" + current)
+        return ("Login server target: " + host + "\n\n"
+                + "\n".join(names) + "\n\n"
+                + "Update only realmList in realmlist.wtf and Config.wtf? "
+                + "The patchList and other settings will be preserved.")
+
+    module.apply_ravencraft_realm_endpoints = apply_custom_realm
+    module.realmlist_prompt_title = custom_prompt_title
+    module.format_realmlist_prompt = custom_prompt_body
+    module._raven_cn_realm_patched = True
+    _cn_log("login-adapter-ready", "realmlist-runtime", "realm-only")
+
+
 def _cn_patch_loaded(name, module):
     try:
-        if name == "ichalaunch.ui.main_window":
+        if name == "ichalaunch.game.realm_status":
+            _cn_patch_realm_status(module)
+        elif name == "ichalaunch.game.realmlist_wtf":
+            _cn_patch_realmlist_runtime(module)
+        elif name == "ichalaunch.ui.main_window":
             cls = getattr(module, "NavTabButton", None)
             if cls is not None:
                 _cn_patch_widget(cls, "paintEvent", _CN_TRANSLATIONS)
@@ -849,7 +960,7 @@ class _CnLoader:
 
 
 class _CnFinder:
-    _targets = frozenset(("ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", "ichalaunch.ui.widgets.metal_framed_dialog", *tuple(_CN_PAGE_CLASSES)))
+    _targets = frozenset(("ichalaunch.game.realm_status", "ichalaunch.game.realmlist_wtf", "ichalaunch.ui.main_window", "ichalaunch.ui.widgets.launch_button", "ichalaunch.core.self_update", "ichalaunch.ui.pages.settings", "ichalaunch.ui.widgets.glue_combo", "ichalaunch.ui.widgets.glue_panel_button", "ichalaunch.ui.widgets.theme_button", "ichalaunch.ui.widgets.theme_checkbox", "ichalaunch.ui.widgets.theme_radio", "ichalaunch.ui.widgets.dialogs", "ichalaunch.ui.widgets.metal_framed_dialog", *tuple(_CN_PAGE_CLASSES)))
 
     def find_spec(self, fullname, path=None, target=None):
         if fullname not in self._targets:
@@ -978,7 +1089,7 @@ def decode_script(entry):
     return code
 
 
-def make_bootstrap(original, source_sha256, translations=None):
+def make_bootstrap(original, source_sha256, translations=None, login_server=None):
     # Store the unchanged original run CodeType as an embedded constant.
     # This avoids redistributing its bytecode as a separate file or importing it.
     if len(source_sha256) != 64 or any(c not in "0123456789abcdef" for c in source_sha256):
@@ -992,6 +1103,7 @@ def make_bootstrap(original, source_sha256, translations=None):
     if source.count(marker) != 1:
         raise ValueError("Missing bootstrap dictionary marker")
     source = source.replace(marker, repr(translations))
+    source = source.replace("__RAVEN_LOGIN_HOST__", repr(validate_login_server(login_server)))
     source = source.replace("exec(_RAVEN_ORIGINAL_RUN_CODE_)",
                                       "exec('__RAVEN_ORIGINAL_RUN_CODE__')")
     wrapped = compile(source, "<raven-cn-bootstrap>", "exec")
@@ -1091,7 +1203,7 @@ def generate(source: Path, destination: Path, dictionary_path: Path | None = Non
     required = {"ichalaunch", "main"}
     if not required.issubset(script_code.co_names):
         raise ValueError("Launcher does not have the expected IchaLaunch Python entry")
-    patched = make_bootstrap(script_code, sha256(original), load_translations(dictionary_path))
+    patched = make_bootstrap(script_code, sha256(original), load_translations(dictionary_path), target_login)
     script["blob"] = zlib.compress(patched, level=9) if script["compressed"] else patched
     script["raw_size"] = len(patched)
     changes = ["run"]
