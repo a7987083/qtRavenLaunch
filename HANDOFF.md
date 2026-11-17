@@ -140,3 +140,11 @@ Run isolated generator against the real original executable on a trusted Windows
 - `tests/test_cn_generator.py` 加入 mock ThemeCheckBox/ThemeRadioButton paint-only 与 checked 值保护，及只翻译安全 description QLabel、不能修改原始 `Not installed`、`Vanilla Tweaks V2` 模组 ID 的合成测试。首个真实 CI 错误 Run `44058901250`：模组名称在测试里恰好位于 Page.__init__ 的 eligible 静态常量集合中，被误翻译；**这暴露了真实潜在安全边界**，不是测试笔误。已新增 `_CN_CLIENT_CATALOG_IDENTIFIERS` 的明确模组标识否决集合，禁止这些 package ID 被 ClientPage 通用 QLabel 翻译。列表是已知模组的防护，不能声称覆盖所有未知 catalog ID；对后续可使用控件路径和元数据属性建立更完备隔离。再等最新 CI。
 - 仍未解决 CLIENT 下方 `Pending: Install Auto-clear WDB cache` 的动态文字、模组状态 `Not installed`、Cinder 1.14 元数据、GAME UPDATE 动态弹窗。状态不应未经调用链验证就强制 setText。
 - 与以往稳定基线一致：原版 EXE 不改，生成器输出新版 EXE；`_running_launcher_sha256` 仍使用原版输入 hash 避免汉化误报官方更新；词库仍为一行一组的单层 JSON。用户 Windows 实机截图/checkbox 点击回归仍待做，CI 不等于实机通过。
+
+## 2026-11-17 B2.4.7 继续处理：Config.wtf / DXVK 编辑弹窗
+- 真实 Windows 用户截图：CONFIG.WTF SETTINGS 与 DXVK.CONF SETTINGS 均有大量英文标题、说明、分组与选项。CLIENT 模组 Vanilla Tweaks V2 长说明仍是英文（之前 allowlist QLabel 修复未达到预期）。
+- 已核对原版 `/mnt/data/_tmp_original.pyz` 的 Python code metadata：`ichalaunch.ui.widgets.dialogs.ConfigWtfSettingsDialog` / `DxvkConfSettingsDialog` 真实存在，配置字段的真实原始 label/group/hint 在 `ichalaunch.game.config_wtf_edits.CVAR_SPECS`、`ichalaunch.game.dxvk_conf_edits.DXVK_SPECS`；`name` 是业务配置键，严禁改。
+- `tools/cn_generator_core.py` 新增导入弹窗模块 `ichalaunch.ui.widgets.dialogs` 专属 adapter：在这两个已知弹窗 __init__ 返回后遍历其子 QLabel，仅对固定弹窗文字 + spec.label/group/hint 且词库有非空译文时 setText。滑块、QComboBox currentData、Spec.name 和输出文件未改。`translations/zh_CN.json` 补充 Config/DXVK 文本（新增约 46 条）。
+- `tests/test_cn_generator.py` 新增两种弹窗模拟测试（配置项中文、无关文字不变、保存值不变）。首个真实失败 Run `44061061730` 是代码收集所有 init 字符串把测试中的不相干业务 label 误改，修复 Commit `75f03512` 仅收集显式展示字段；Run `44061378221` Python3.14 tests + PyInstaller Windows EXE build 完整 success。后续 `tools/translation_diagnostics.py` 把 `config-label-applied` 计入命中，Commit `41560763`，CI `44061492965` 为当前后续检查。
+- `GENERATOR_README.md` 已写操作边界。当前 Windows 真实 GUI 弹窗汉化、长文本截断、Save/应用实际行为和用户外部独立 zh_CN.json 是否包含新词，**全部未验证**；仅记录 CI 和合成测试，不可声称实机成功。
+- 重要后续：定位 Vanilla Tweaks V2 动态描述到底是哪个 Qt 组件类及其创建/更新路径；不要盲目把全 ClientPage 的 JLabel、QComboBox 或模组名称全局翻译。用户此前已确认左侧 CatNavButton 中文生效，保持此稳定基线。官方 EXE SHA 兼容修复不能移除。
