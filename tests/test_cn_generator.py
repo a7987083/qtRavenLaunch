@@ -478,13 +478,13 @@ class GeneratorTests(unittest.TestCase):
         # even though the parent method does not have it in flat co_consts.
         ns = {}
         exec(compile(
-            "class Page:\\n"
-            "    def _build_menu(self):\\n"
-            "        def configure():\\n"
-            "            return 'Performance / Fixes'\\n"
-            "        return configure()\\n"
-            "    def set_check_status(self):\\n"
-            "        return 'BUSINESS_STATUS'\\n",
+            "class Page:\n"
+            "    def _build_menu(self):\n"
+            "        def configure():\n"
+            "            return 'Performance / Fixes'\n"
+            "        return configure()\n"
+            "    def set_check_status(self):\n"
+            "        return 'BUSINESS_STATUS'\n",
             "fixture.py", "exec"), ns)
         bootstrap = marshal.loads(make_bootstrap(
             compile("pass", "run.py", "exec"), "a" * 64, {}))
