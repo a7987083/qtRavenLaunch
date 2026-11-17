@@ -122,3 +122,23 @@ Defaults to Interface\AddOns under the game folder when you set or change the ga
 原文已在原版 `PYZ.pyz` → `ichalaunch.ui.pages.settings.SettingsPage.__init__` CodeType 常量中确认，不是截图猜测。现在它及其他十余条已核实的 SETTINGS 静态原文已加入局部 `_CN_SETTINGS_UI_KEYS` 和单层词库 `translations/zh_CN.json`。
 
 **保留安全约束：** SETTINGS 适配器只处理 SettingsPage 子控件中的受控静态文字，不改动输入字段、状态栏、业务路由和启动器更新 SHA 逻辑。新增键不保证所有其他 Qt 自绘/动态文字自动汉化。GUI 实机显示及换词库后的游戏功能仍需 Windows 回归。
+
+## B2.4.1 — 扩大 Qt 显示层适配与可观察性
+
+生成器新增**按页面作用域**的 GUI 文本适配器，模块映射与真实原版 Python 3.14 字节码核对：
+
+- `ichalaunch.ui.pages.home.HomePage`
+- `ichalaunch.ui.pages.client.ClientPage`
+- `ichalaunch.ui.pages.addons.AddonsPage`
+- `ichalaunch.ui.pages.addons_114.Raven114AddonsPanel`
+- 原有 `ichalaunch.ui.pages.settings.SettingsPage` 适配改进
+
+仅对页内 `QLabel`、`QAbstractButton` 和若干已知自绘 Qt 控件尝试翻译。来源必须是该页构造函数 `__init__.__code__.co_consts` 中出现过的**静态原文**（HOME 额外包含确认的 `refresh/_fill_whats_new`），且原文在用户填好的单层词库中有非空译文。跳过输入框、对象名表明是 status/progress/loading/path/state 的控件、`PLAY/UPDATE/INSTALL` 等关键业务状态值。显示范围仍有限，未做全局 `setText()` 劫持。UI 布局和绘制外观保持原有 Qt 机制。
+
+**运行时翻译命中日志**：用户启动新生成的 `IchaLaunch-CN.exe`，程序在 `%LOCALAPPDATA%\\RavenLaunch-CN\\translation-coverage.jsonl`（无法使用该目录时回退至 TEMP）记录最近会话的页适配状态、命中词条和控件适配失败。不会记录输入框内容或动态私密文本。GUI 增加「查看翻译诊断」按钮：从最后一个 `session-start` 开始统计，并输出 `translation-coverage-summary.json`，记录 `ready_pages`、`applied_keys`、`adapter_warnings` 和 `unobserved_translated_keys`。
+
+**注意**：`unobserved_translated_keys` 仅表示**本次运行尚未观察到**，包括尚未打开页面的词条。静态原文提取 ≠ 运行时命中 ≠ 真实 Windows UI 完整回归。当前默认词库补充 HOME / ADDONS 已在原版 CodeType 中出现过的界面标签（共 67 条）。
+
+确认这次更新是否生效的最小步骤：使用最新生成器生成不同文件名的 `IchaLaunch-CN.exe`；打开 HOME、SETTINGS、CLIENT、ADDONS 并观察中文；在生成器点击「查看翻译诊断」，检查适配器 ready 和 applied。保留官方原版 EXE；检查启动器更新提示是否仍正常。
+
+此阶段未获得真实 Windows GUI 对这些新 Hook 的回归证据，仅 Python3.14 合成 Qt 控件测试/Windows CI 构建可用于确认语法和模拟行为。
