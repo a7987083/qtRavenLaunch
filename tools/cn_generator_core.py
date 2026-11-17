@@ -290,13 +290,38 @@ _CN_NEVER_REPLACE = frozenset((
 
 
 def _cn_static_literals(code):
-    """Read only pre-existing static constants; no disassembly or exec."""
+    """Collect static strings, including nested UI construction closures.
+
+    Do not execute code objects. Only use these strings as candidates for
+    page-scoped display controls, never for modifying business-state values.
+    """
+    import types as _cn_types
     result = set()
-    for item in code.co_consts:
-        if isinstance(item, str):
-            result.add(item)
-        elif isinstance(item, (tuple, frozenset)):
-            result.update(x for x in item if isinstance(x, str))
+    def visit(value):
+        if isinstance(value, str):
+            result.add(value)
+        elif isinstance(value, _cn_types.CodeType):
+            for item in value.co_consts:
+                visit(item)
+        elif isinstance(value, (tuple, frozenset)):
+            for item in value:
+                visit(item)
+    visit(code)
+    return result
+
+
+def _cn_client_ui_literals(cls):
+    """Limit CLIENT's extra literals to UI construction and render methods."""
+    result = set()
+    candidates = ("_add_", "_build_", "_create_", "_refresh_", "refresh",
+                  "_sync_", "_update_", "show")
+    excluded = ("_sync_status_host", "set_check_status", "set_checking",
+                "set_updates", "clear_pending_update", "_sync_game_lock_actions")
+    for name, method in vars(cls).items():
+        if name in excluded or not name.startswith(candidates):
+            continue
+        if hasattr(method, "__code__"):
+            result.update(_cn_static_literals(method.__code__))
     return result
 
 
@@ -325,6 +350,8 @@ def _cn_patch_page(module_name, module):
         method = getattr(page_cls, name, None)
         if hasattr(method, "__code__"):
             eligible.update(_cn_static_literals(method.__code__))
+    if module_name == "ichalaunch.ui.pages.client":
+        eligible.update(_cn_client_ui_literals(page_cls))
     page_id = module_name.rsplit(".", 1)[-1]
 
     def translate_visible(self):
