@@ -61,3 +61,15 @@ Static and synthetic CI testing is not evidence that the real Windows launcher u
 
 Glyphshift 的 JSON / CSV 原文可由 `tools/translation_collector.py` 导出到审核候选列表，审核后将英文/中文键值复制进这个简单词库；导入器不自动写入正式词库。详情见 `docs/GLYPHSHIFT_RESEARCH.md`。
 
+
+## B2.2 — SETTINGS 静态 UI 文本首批适配（2026-11-17）
+
+基于用户 Windows SETTINGS 截图中的确定英文，单层词库新增 `GAME CLIENT`、`GAME LOCATION`、`ADDONS FOLDER`、`EXISTING INSTALL`、`INSTALL...`、`BROWSE...`、`VERIFY`、`RESET CLIENT LINK` 以及部分设置说明文字；目前共 21 个英文→中文词条。
+
+`tools/cn_generator_core.py` 在 `ichalaunch.ui.pages.settings` 被导入后给 `SettingsPage` 安装作用域受限的后处理适配器：构造完成、`refresh()`、`_refresh_game_client()` 后，递归检索本页面的 `QLabel`、`QAbstractButton`，仅对代码里明确允许的 SETTINGS 静态英文词条应用词库译文。
+
+- 不修改原版 EXE，仍然在生成的新 EXE 中接入。
+- **不是全局 setText Hook**：不处理输入框、窗口外的状态栏或任意动态业务文字；更新用源文件 SHA 的修复保持原样。
+- 为了防止使用者在 JSON 中添加业务状态词后发生错误，SETTINGS 应用位置仍受独立的静态白名单约束；添加新词条不保证即刻生效。
+- `SETTINGS` 标题若不属于 SettingsPage 的 QLabel，需要后续按真实 Qt 对象结构适配。
+- 当前 SETTINGS 的人工翻译是否全部匹配真实 Qt `.text()`、布局是否截断以及所有按钮能否正常响应，**等待用户 Windows 实机回归**。CI 仅用合成 QWidget 测试自定义适配器。
