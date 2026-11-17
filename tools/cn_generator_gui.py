@@ -6,8 +6,9 @@ from pathlib import Path
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from cn_generator_core import generate
+from cn_generator_core import generate, load_translations
 from extract_strings import export_strings
+from translation_diagnostics import diagnostic_path, summarize
 
 
 def main():
@@ -152,18 +153,31 @@ def main():
         threading.Thread(target=work, daemon=True).start()
 
     def view_translation_diagnostics():
-        base = os.environ.get('LOCALAPPDATA') or os.environ.get('TEMP') or '.'
-        report = Path(base) / 'RavenLaunch-CN' / 'translation-coverage.jsonl'
+        report = diagnostic_path()
         if not report.is_file():
             messagebox.showinfo(
                 '尚无诊断报告',
                 '请先运行新生成的 IchaLaunch-CN.exe，并进入需要翻译的页面。'
-                '诊断文件将在对应页面的 Qt 适配器执行时生成。')
+                '运行时日志将保存到 LOCALAPPDATA/RavenLaunch-CN。')
             return
         try:
-            os.startfile(str(report))
-        except OSError as exc:
-            messagebox.showerror('打开诊断失败', str(exc))
+            custom = Path(dictionary.get().strip()) if dictionary.get().strip() else None
+            translated = load_translations(custom)
+            summary = summarize(report, translated)
+            outfile = report.with_name('translation-coverage-summary.json')
+            outfile.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n',
+                               encoding='utf-8')
+            messagebox.showinfo(
+                '翻译诊断',
+                f"已就绪页面：{', '.join(summary['ready_pages']) or '无'}\\n"
+                f"命中词条：{summary['applied_unique_count']}\\n"
+                f"尚未观察到的已翻译词条：{len(summary['unobserved_translated_keys'])}\\n"
+                f"适配器警告：{len(summary['adapter_warnings'])}\\n\\n"
+                '未观察到不等于翻译失败，可能尚未进入对应页面。'
+                '点击确定打开完整 JSON 报告。')
+            os.startfile(str(outfile))
+        except (OSError, ValueError, RuntimeError) as exc:
+            messagebox.showerror('生成诊断失败', str(exc))
 
     diagnostics_button.configure(command=view_translation_diagnostics)
     export_button.configure(command=export_original_strings)
