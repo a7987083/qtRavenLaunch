@@ -287,7 +287,7 @@ def _cn_patch_dialog_family(module):
     # Run the same scoped QLabel pass once the complete dialog is built.
     for class_name in ("ThemedDialog", "RecommendedForkSwapDialog"):
         cls = getattr(module, class_name, None)
-        if cls is None or getattr(cls, "_raven_cn_prompt_wrapper", False):
+        if cls is None or vars(cls).get("_raven_cn_prompt_wrapper", False):
             continue
         original_init = cls.__init__
 
