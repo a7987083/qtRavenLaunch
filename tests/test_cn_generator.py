@@ -103,41 +103,56 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(load_translations(src), {"HOME": "主页", "PLAY": "开始游戏"})
 
     def test_settings_static_labels_and_refresh_only(self):
-        """Settings text is translated while unrelated state labels remain original."""
-        class QLabel:
-            def __init__(self, value):
+        """Translate original-case strings in custom and standard SETTINGS Qt widgets."""
+        class QWidget:
+            def __init__(self, value=""):
                 self.value = value
             def text(self):
                 return self.value
             def setText(self, value):
                 self.value = value
 
-        class QAbstractButton(QLabel):
+        class QLabel(QWidget):
+            pass
+
+        class QAbstractButton(QWidget):
+            pass
+
+        class GluePanelButton(QWidget):
+            pass
+
+        class GradientLabel(QWidget):
+            pass
+
+        class QLineEdit(QWidget):
             pass
 
         class FakeSettingsPage:
             def __init__(self):
-                self.title = QLabel("GAME CLIENT")
-                self.action = QAbstractButton("BROWSE...")
+                self.title = GradientLabel("Settings")
+                self.section = QLabel("Game client")
+                self.action = GluePanelButton("Browse…")
+                self.save = QAbstractButton("Save")
                 self.status = QLabel("UPDATE")
-                self.input = object()
-                self.children = [self.title, self.action, self.status, self.input]
+                self.input = QLineEdit("Game client")
+                self.children = [self.title, self.section, self.action,
+                                 self.save, self.status, self.input]
             def findChildren(self, cls):
                 return [w for w in self.children if isinstance(w, cls)]
             def refresh(self):
-                self.title.setText("GAME LOCATION")
+                self.section.setText("Game location")
 
-        # A translation map is available, but only approved SETTINGS literals
-        # are eligible for setText mutation; "UPDATE" remains business state.
         translations = {
-            "GAME CLIENT": "游戏客户端", "GAME LOCATION": "游戏目录",
-            "BROWSE...": "浏览...", "UPDATE": "更新"
+            "Settings": "设置", "Game client": "游戏客户端",
+            "Game location": "游戏目录", "Browse…": "浏览…",
+            "Save": "保存", "UPDATE": "更新"
         }
         bootstrap = marshal.loads(
             make_bootstrap(compile('pass', 'synthetic-run.py', 'exec'),
                            'a' * 64, translations))
         fake_pyside = types.ModuleType("PySide6")
         fake_widgets = types.ModuleType("PySide6.QtWidgets")
+        fake_widgets.QWidget = QWidget
         fake_widgets.QLabel = QLabel
         fake_widgets.QAbstractButton = QAbstractButton
         fake_pyside.QtWidgets = fake_widgets
@@ -149,16 +164,19 @@ class GeneratorTests(unittest.TestCase):
                 page_module = types.SimpleNamespace(SettingsPage=FakeSettingsPage)
                 ns["_cn_patch_loaded"]("ichalaunch.ui.pages.settings", page_module)
                 page = FakeSettingsPage()
-                self.assertEqual(page.title.text(), "游戏客户端")
-                self.assertEqual(page.action.text(), "浏览...")
+                self.assertEqual(page.title.text(), "设置")
+                self.assertEqual(page.section.text(), "游戏客户端")
+                self.assertEqual(page.action.text(), "浏览…")
+                self.assertEqual(page.save.text(), "保存")
+                self.assertEqual(page.input.text(), "Game client")
                 self.assertEqual(page.status.text(), "UPDATE")
                 page.refresh()
-                self.assertEqual(page.title.text(), "游戏目录")
+                self.assertEqual(page.section.text(), "游戏目录")
                 self.assertEqual(page.status.text(), "UPDATE")
                 self.assertTrue(FakeSettingsPage._raven_cn_settings_patched)
             finally:
-                sys.meta_path[:] = [f for f in sys.meta_path
-                                    if not isinstance(f, ns.get('_CnFinder', type(None)))]
+                sys.meta_path[:] = [finder for finder in sys.meta_path
+                                    if not isinstance(finder, ns.get('_CnFinder', type(None)))]
 
     def test_source_never_overwritten(self):
         with tempfile.TemporaryDirectory() as tmp:
